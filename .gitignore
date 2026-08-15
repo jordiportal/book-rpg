@@ -1,0 +1,14 @@
+# Dependencias
+node_modules/
+
+# Base de datos generada (se recrea al generar zonas)
+server/zones.db
+server/zones.db-journal
+
+# Estado del jugador (persistencia local)
+server/savegame.json
+
+# Logs y temporales
+*.log
+npm-debug.log*
+.DS_Store

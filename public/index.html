@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>異世界迷宮でハーレムを — RPG</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; overflow: hidden; font-family: 'Segoe UI', system-ui, sans-serif; background: #0b0e14; color: #e8e6e3; }
+    #scene-container { position: absolute; inset: 0; }
+    canvas { display: block; }
+
+    /* HUD superior */
+    #hud {
+      position: absolute; top: 0; left: 0; right: 0;
+      display: flex; justify-content: space-between; align-items: flex-start;
+      padding: 12px 16px; pointer-events: none; z-index: 10;
+      background: linear-gradient(to bottom, rgba(0,0,0,0.6), transparent);
+    }
+    .panel {
+      background: rgba(15, 18, 26, 0.85); border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 10px; padding: 10px 14px; backdrop-filter: blur(6px);
+      box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+    }
+    #stats-panel { min-width: 200px; pointer-events: auto; }
+    #stats-panel h3 { font-size: 15px; color: #ffd479; margin-bottom: 6px; letter-spacing: 1px; }
+    .stat-row { display: flex; justify-content: space-between; font-size: 12.5px; padding: 2px 0; }
+    .stat-row .label { color: #9aa3b2; }
+    .stat-row .value { color: #e8e6e3; font-weight: 600; }
+    .stat-row .value.gold { color: #ffd479; }
+    .stat-row .value.hp { color: #ff6b6b; }
+    .stat-row .value.mp { color: #6ba8ff; }
+
+    #objective-panel { margin-left: 12px; pointer-events: auto; max-width: 250px; }
+    #objective-panel h4 { font-size: 13px; color: #ffd479; margin-bottom: 4px; }
+    #objective-panel p { font-size: 12px; color: #c8cdd6; line-height: 1.4; }
+    #objective-panel .days { color: #ff8a5c; font-weight: 700; }
+
+    /* Prompt contextual (interacción por proximidad) */
+    #interact-prompt {
+      position: absolute; bottom: 150px; left: 50%; transform: translateX(-50%);
+      display: flex; align-items: center; gap: 10px;
+      background: rgba(0,0,0,0.78); border: 1px solid #ffd479; border-radius: 30px;
+      padding: 8px 20px; z-index: 12; pointer-events: none;
+      box-shadow: 0 6px 24px rgba(0,0,0,0.5);
+      animation: promptPulse 1.6s ease-in-out infinite;
+    }
+    .prompt-key {
+      background: #ffd479; color: #1a1206; font-weight: 800; border-radius: 50%;
+      min-width: 26px; height: 26px; display: flex; align-items: center; justify-content: center;
+      font-size: 14px; padding: 0 4px;
+    }
+    .prompt-text { font-size: 14px; color: #fff; font-weight: 600; }
+    @keyframes promptPulse {
+      0%, 100% { transform: translateX(-50%) scale(1); }
+      50% { transform: translateX(-50%) scale(1.04); }
+    }
+
+    /* Panel de diálogo compacto (esquina inferior izquierda) */
+    #dialog-panel {
+      position: absolute; bottom: 14px; left: 14px; width: 380px; max-width: 90vw;
+      background: rgba(10, 13, 20, 0.82); border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 12px; z-index: 11; pointer-events: auto;
+      backdrop-filter: blur(6px); box-shadow: 0 8px 30px rgba(0,0,0,0.5);
+      overflow: hidden;
+    }
+    #dialog-header {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 8px 12px; border-bottom: 1px solid rgba(255,255,255,0.08);
+      cursor: pointer; user-select: none;
+    }
+    #dialog-header span { font-size: 12px; color: #9aa3b2; letter-spacing: 1px; font-weight: 600; }
+    #dialog-header .toggle { color: #ffd479; font-size: 14px; }
+    #log {
+      max-height: 130px; overflow-y: auto; padding: 10px 12px;
+      scroll-behavior: smooth;
+    }
+    #log::-webkit-scrollbar { width: 6px; }
+    #log::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); border-radius: 3px; }
+    .msg { margin-bottom: 8px; line-height: 1.45; font-size: 13px; }
+    .msg.narrator { color: #d8dce4; }
+    .msg.narrator strong { color: #ffd479; }
+    .msg.player { color: #9fd0ff; text-align: right; font-style: italic; font-size: 12px; }
+    .msg.system { color: #7ee0a0; font-size: 12px; }
+    .msg.error { color: #ff6b6b; }
+
+    #input-row { display: flex; gap: 6px; padding: 8px 10px; border-top: 1px solid rgba(255,255,255,0.08); }
+    #action-input {
+      flex: 1; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.15);
+      border-radius: 8px; padding: 8px 12px; color: #fff; font-size: 13px; outline: none;
+    }
+    #action-input:focus { border-color: #ffd479; }
+    #action-input::placeholder { color: #6b7280; }
+    .btn {
+      background: linear-gradient(135deg, #ffb347, #ff8a5c); color: #1a1206;
+      border: none; border-radius: 8px; padding: 8px 14px; font-weight: 700;
+      font-size: 13px; cursor: pointer; transition: transform 0.1s, filter 0.2s;
+    }
+    .btn:hover { filter: brightness(1.1); }
+    .btn:active { transform: scale(0.97); }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    /* Overlay de generación de zona (pantalla de carga con pasos) */
+    #gen-overlay {
+      position: absolute; inset: 0; z-index: 25;
+      display: none; flex-direction: column; align-items: center; justify-content: center;
+      background: radial-gradient(ellipse at center, rgba(26,32,48,0.96), rgba(11,14,20,0.98));
+      text-align: center; padding: 24px;
+    }
+    #gen-overlay.active { display: flex; }
+    #gen-overlay .gen-title { font-size: 22px; color: #ffd479; letter-spacing: 1px; margin-bottom: 4px; }
+    #gen-overlay .gen-sub { font-size: 13px; color: #9aa3b2; margin-bottom: 22px; }
+    #gen-overlay .gen-spinner {
+      width: 44px; height: 44px; border: 4px solid rgba(255,212,121,0.2);
+      border-top-color: #ffd479; border-radius: 50%;
+      animation: spin 0.9s linear infinite; margin-bottom: 22px;
+    }
+    #gen-steps {
+      list-style: none; width: 100%; max-width: 360px; text-align: left;
+      display: flex; flex-direction: column; gap: 10px; min-height: 120px;
+    }
+    #gen-steps li {
+      display: flex; align-items: center; gap: 10px;
+      font-size: 14px; color: #6b7280; opacity: 0.5;
+      transition: opacity 0.3s, color 0.3s;
+    }
+    #gen-steps li.active { color: #ffd479; opacity: 1; }
+    #gen-steps li.done { color: #7ee0a0; opacity: 1; }
+    #gen-steps li .gen-ico {
+      width: 22px; height: 22px; flex-shrink: 0; display: flex; align-items: center; justify-content: center;
+      border-radius: 50%; border: 1px solid currentColor; font-size: 12px;
+    }
+    #gen-steps li.done .gen-ico { border-color: #7ee0a0; }
+    #gen-steps li.active .gen-ico { border-color: #ffd479; }
+    #gen-overlay .gen-error { color: #ff6b6b; font-size: 13px; margin-top: 14px; max-width: 360px; }
+
+    /* Pantalla de carga / intro */
+    #intro {
+      position: absolute; inset: 0; z-index: 20; display: flex; flex-direction: column;
+      align-items: center; justify-content: center; background: radial-gradient(ellipse at center, #1a2030, #0b0e14);
+      text-align: center; padding: 20px;
+    }
+    #intro h1 { font-size: 28px; color: #ffd479; margin-bottom: 8px; letter-spacing: 2px; }
+    #intro h2 { font-size: 16px; color: #9aa3b2; font-weight: 400; margin-bottom: 24px; }
+    #intro .loading { color: #7ee0a0; font-size: 14px; }
+    #intro button {
+      margin-top: 20px; background: linear-gradient(135deg, #ffb347, #ff8a5c); color: #1a1206;
+      border: none; border-radius: 10px; padding: 14px 32px; font-size: 16px; font-weight: 700; cursor: pointer;
+    }
+    .hidden { display: none !important; }
+
+    /* Indicador de carga del LLM */
+    #thinking {
+      position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%);
+      z-index: 15; background: rgba(0,0,0,0.8); border: 1px solid #ffd479;
+      border-radius: 12px; padding: 16px 28px; font-size: 15px; color: #ffd479;
+      display: none; align-items: center; gap: 10px;
+    }
+    #thinking .spinner {
+      width: 18px; height: 18px; border: 3px solid rgba(255,212,121,0.3);
+      border-top-color: #ffd479; border-radius: 50%; animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* Controles info */
+    #controls-info {
+      position: absolute; bottom: 8px; right: 14px;
+      font-size: 11px; color: rgba(255,255,255,0.45); z-index: 5; pointer-events: none;
+      text-align: right; line-height: 1.6;
+    }
+    #controls-info kbd {
+      background: rgba(255,255,255,0.12); border-radius: 4px; padding: 1px 5px;
+      font-family: inherit; font-size: 10px; color: #ffd479;
+    }
+  </style>
+</head>
+<body>
+  <div id="scene-container"></div>
+
+  <!-- Intro -->
+  <div id="intro">
+    <h1>異世界迷宮でハーレムを</h1>
+    <h2>Harem in the Labyrinth of Another World — RPG guiado por IA</h2>
+    <p class="loading" id="intro-loading">Cargando el mundo...</p>
+    <button id="start-btn" class="hidden">⚔️ Comenzar aventura</button>
+  </div>
+
+  <!-- HUD -->
+  <div id="hud">
+    <div id="stats-panel" class="panel">
+      <h3 id="player-name">加賀道夫</h3>
+      <div class="stat-row"><span class="label">Nivel</span><span class="value" id="stat-level">1</span></div>
+      <div class="stat-row"><span class="label">EXP</span><span class="value" id="stat-exp">0/100</span></div>
+      <div class="stat-row"><span class="label">HP</span><span class="value hp" id="stat-hp">100/100</span></div>
+      <div class="stat-row"><span class="label">MP</span><span class="value mp" id="stat-mp">50/50</span></div>
+      <div class="stat-row"><span class="label">Trabajo</span><span class="value" id="stat-job">無職</span></div>
+      <div class="stat-row"><span class="label">Dinero</span><span class="value gold" id="stat-money">0 ナール</span></div>
+      <div class="stat-row"><span class="label">Ubicación</span><span class="value" id="stat-loc">最初の村</span></div>
+    </div>
+    <div id="objective-panel" class="panel">
+      <h4>🎯 Objetivo</h4>
+      <p>Consigue <strong>420,000 ナール</strong> para comprar a <strong>ロクサーヌ</strong> en el mercado de esclavos.</p>
+      <p class="days" id="stat-days">⏳ Quedan 5 días</p>
+    </div>
+  </div>
+
+  <!-- Prompt contextual -->
+  <div id="interact-prompt" class="hidden">
+    <div class="prompt-key" id="prompt-key">E</div>
+    <div class="prompt-text" id="prompt-text">Interactuar</div>
+  </div>
+
+  <!-- Diálogo compacto -->
+  <div id="dialog-panel">
+    <div id="dialog-header">
+      <span>📜 Registro</span>
+      <span class="toggle" id="toggle-log">—</span>
+    </div>
+    <div id="log"></div>
+    <div id="input-row">
+      <input id="action-input" type="text" placeholder="Acción libre (opcional)..." autocomplete="off">
+      <button class="btn" id="send-btn">➤</button>
+    </div>
+  </div>
+
+  <div id="thinking"><div class="spinner"></div><span>El mundo está reaccionando...</span></div>
+
+  <!-- Overlay de generación de zona -->
+  <div id="gen-overlay">
+    <div class="gen-title">🏰 Generando zona</div>
+    <div class="gen-sub" id="gen-sub">El mundo se está creando a partir de la historia...</div>
+    <div class="gen-spinner"></div>
+    <ul id="gen-steps"></ul>
+    <div class="gen-error" id="gen-error"></div>
+  </div>
+  <div id="controls-info">
+    <kbd>WASD</kbd> mover · <kbd>←/→</kbd> o <kbd>Q</kbd> girar cámara<br>
+    <kbd>E</kbd> interactuar · <kbd>F</kbd> atacar · Click en personaje: 鑑定
+  </div>
+
+  <!-- Three.js desde CDN -->
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+      }
+    }
+  </script>
+  <script type="module" src="/main.js"></script>
+</body>
+</html>

@@ -1,0 +1,14 @@
+{
+  "name": "book-rpg",
+  "version": "0.1.0",
+  "description": "RPG de mundo abierto guiado por LLM basado en '異世界迷宮でハーレムを'",
+  "type": "module",
+  "scripts": {
+    "start": "node server/index.js",
+    "index-book": "node server/bookIndex.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "sql.js": "^1.14.2"
+  }
+}
