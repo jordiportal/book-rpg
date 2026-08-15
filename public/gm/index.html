@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Book-RPG — Panel del Game Master</title>
+  <link rel="stylesheet" href="gm.css">
+</head>
+<body>
+  <div class="app">
+    <!-- Sidebar -->
+    <aside class="sidebar">
+      <div class="brand">
+        <h1>📖 Book-RPG</h1>
+        <span>Panel del Game Master</span>
+      </div>
+      <nav class="nav">
+        <button class="nav-btn active" data-section="story">📚 Historia</button>
+        <button class="nav-btn" data-section="characters">👥 Personajes</button>
+        <button class="nav-btn" data-section="equipment">⚔️ Equipamiento</button>
+      </nav>
+      <div class="sidebar-footer">
+        <a href="/" class="link">← Volver al juego</a>
+      </div>
+    </aside>
+
+    <!-- Main content -->
+    <main class="main">
+      <!-- ===== HISTORIA ===== -->
+      <section id="section-story" class="section active">
+        <header class="section-header">
+          <h2>📚 Historia</h2>
+          <div class="actions">
+            <label class="btn btn-primary">
+              📤 Subir archivo
+              <input type="file" id="story-upload" accept=".txt,.epub" hidden>
+            </label>
+            <button class="btn btn-secondary" id="btn-reparse">🔄 Reestructurar con IA</button>
+          </div>
+        </header>
+        <div id="story-empty" class="empty-state">
+          <p>No hay historia cargada. Sube un archivo .txt o .epub para empezar.</p>
+        </div>
+        <div id="story-content" class="hidden">
+          <div class="story-meta">
+            <h3 id="story-title"></h3>
+            <p id="story-source" class="muted"></p>
+          </div>
+          <div class="chapters-list" id="chapters-list"></div>
+        </div>
+      </section>
+
+      <!-- ===== PERSONAJES ===== -->
+      <section id="section-characters" class="section">
+        <header class="section-header">
+          <h2>👥 Personajes</h2>
+          <button class="btn btn-primary" id="btn-new-character">➕ Nuevo personaje</button>
+        </header>
+        <div id="characters-list" class="cards-grid"></div>
+        <div id="characters-empty" class="empty-state hidden">
+          <p>No hay personajes. Crea el primero.</p>
+        </div>
+      </section>
+
+      <!-- ===== EQUIPAMIENTO ===== -->
+      <section id="section-equipment" class="section">
+        <header class="section-header">
+          <h2>⚔️ Equipamiento</h2>
+          <button class="btn btn-primary" id="btn-new-equipment">➕ Nuevo item</button>
+        </header>
+        <div id="equipment-list" class="cards-grid"></div>
+        <div id="equipment-empty" class="empty-state hidden">
+          <p>No hay items de equipamiento. Crea el primero.</p>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- ===== MODAL: Personaje ===== -->
+  <div class="modal-overlay" id="modal-character">
+    <div class="modal">
+      <header class="modal-header">
+        <h3 id="modal-character-title">Nuevo personaje</h3>
+        <button class="btn-icon" id="btn-close-character">✕</button>
+      </header>
+      <form class="modal-body" id="form-character">
+        <input type="hidden" id="char-id">
+        <div class="field-group">
+          <label>Nombre</label>
+          <div class="field-with-suggest">
+            <input type="text" id="char-name" required>
+            <button type="button" class="btn-suggest" data-kind="name" data-target="char-name" title="Sugerir nombre">💡</button>
+          </div>
+        </div>
+        <div class="field-row">
+          <div class="field-group">
+            <label>Raza</label>
+            <input type="text" id="char-race">
+          </div>
+          <div class="field-group">
+            <label>Clase</label>
+            <input type="text" id="char-class">
+          </div>
+        </div>
+        <div class="field-group">
+          <label>Descripción</label>
+          <div class="field-with-suggest">
+            <textarea id="char-description" rows="3"></textarea>
+            <button type="button" class="btn-suggest" data-kind="description" data-target="char-description" title="Sugerir descripción">💡</button>
+          </div>
+        </div>
+        <div class="field-group">
+          <label>Tags (separados por coma)</label>
+          <input type="text" id="char-tags" placeholder="companion, main, villain">
+        </div>
+        <div class="stats-block">
+          <div class="stats-header">
+            <label>Stats</label>
+            <button type="button" class="btn-suggest" data-kind="stats" data-target="stats" title="Sugerir stats">💡 Sugerir stats</button>
+          </div>
+          <div class="stats-grid">
+            <div class="stat-field"><label>LV</label><input type="number" id="stat-level" value="1" min="1"></div>
+            <div class="stat-field"><label>HP</label><input type="number" id="stat-hp" value="100" min="1"></div>
+            <div class="stat-field"><label>MP</label><input type="number" id="stat-mp" value="50" min="0"></div>
+            <div class="stat-field"><label>STR</label><input type="number" id="stat-str" value="10" min="1"></div>
+            <div class="stat-field"><label>VIT</label><input type="number" id="stat-vit" value="10" min="1"></div>
+            <div class="stat-field"><label>AGI</label><input type="number" id="stat-agi" value="10" min="1"></div>
+            <div class="stat-field"><label>DEX</label><input type="number" id="stat-dex" value="10" min="1"></div>
+            <div class="stat-field"><label>INT</label><input type="number" id="stat-int" value="10" min="1"></div>
+            <div class="stat-field"><label>LUCK</label><input type="number" id="stat-luck" value="10" min="1"></div>
+          </div>
+        </div>
+        <div class="field-group">
+          <label>Equipamiento</label>
+          <div class="equip-slots">
+            <div class="equip-slot">
+              <span>Arma</span>
+              <select id="equip-weapon"><option value="">— vacío —</option></select>
+            </div>
+            <div class="equip-slot">
+              <span>Armadura</span>
+              <select id="equip-armor"><option value="">— vacío —</option></select>
+            </div>
+            <div class="equip-slot">
+              <span>Accesorio</span>
+              <select id="equip-accessory"><option value="">— vacío —</option></select>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-ghost" id="btn-cancel-character">Cancelar</button>
+          <button type="submit" class="btn btn-primary">Guardar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ===== MODAL: Equipamiento ===== -->
+  <div class="modal-overlay" id="modal-equipment">
+    <div class="modal">
+      <header class="modal-header">
+        <h3 id="modal-equipment-title">Nuevo item</h3>
+        <button class="btn-icon" id="btn-close-equipment">✕</button>
+      </header>
+      <form class="modal-body" id="form-equipment">
+        <input type="hidden" id="eq-id">
+        <div class="field-group">
+          <label>Nombre</label>
+          <input type="text" id="eq-name" required>
+        </div>
+        <div class="field-row">
+          <div class="field-group">
+            <label>Slot</label>
+            <select id="eq-slot">
+              <option value="weapon">Arma</option>
+              <option value="armor">Armadura</option>
+              <option value="accessory">Accesorio</option>
+            </select>
+          </div>
+          <div class="field-group">
+            <label>Tipo</label>
+            <input type="text" id="eq-type" placeholder="espada, arco, anillo...">
+          </div>
+          <div class="field-group">
+            <label>Rareza</label>
+            <select id="eq-rarity">
+              <option value="common">Común</option>
+              <option value="uncommon">Poco común</option>
+              <option value="rare">Raro</option>
+              <option value="epic">Épico</option>
+              <option value="legendary">Legendario</option>
+            </select>
+          </div>
+        </div>
+        <div class="field-group">
+          <label>Descripción</label>
+          <textarea id="eq-description" rows="2"></textarea>
+        </div>
+        <div class="stats-block">
+          <label>Bonificaciones de stats</label>
+          <div class="stats-grid">
+            <div class="stat-field"><label>STR</label><input type="number" id="eq-stat-str" value="0"></div>
+            <div class="stat-field"><label>VIT</label><input type="number" id="eq-stat-vit" value="0"></div>
+            <div class="stat-field"><label>AGI</label><input type="number" id="eq-stat-agi" value="0"></div>
+            <div class="stat-field"><label>DEX</label><input type="number" id="eq-stat-dex" value="0"></div>
+            <div class="stat-field"><label>INT</label><input type="number" id="eq-stat-int" value="0"></div>
+            <div class="stat-field"><label>LUCK</label><input type="number" id="eq-stat-luck" value="0"></div>
+            <div class="stat-field"><label>HP</label><input type="number" id="eq-stat-hp" value="0"></div>
+            <div class="stat-field"><label>MP</label><input type="number" id="eq-stat-mp" value="0"></div>
+          </div>
+        </div>
+        <div class="field-group">
+          <label>Valor (oro)</label>
+          <input type="number" id="eq-value" value="0" min="0">
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-ghost" id="btn-cancel-equipment">Cancelar</button>
+          <button type="submit" class="btn btn-primary">Guardar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ===== MODAL: Capítulo ===== -->
+  <div class="modal-overlay" id="modal-chapter">
+    <div class="modal modal-wide">
+      <header class="modal-header">
+        <h3 id="modal-chapter-title">Capítulo</h3>
+        <button class="btn-icon" id="btn-close-chapter">✕</button>
+      </header>
+      <div class="modal-body" id="chapter-detail"></div>
+    </div>
+  </div>
+
+  <!-- ===== TOAST ===== -->
+  <div id="toast" class="toast"></div>
+
+  <script src="gm.js"></script>
+</body>
+</html>

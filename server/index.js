@@ -18,7 +18,18 @@ const PORT = process.env.PORT || 4200;
 const SAVE_FILE = join(__dirname, 'savegame.json');
 
 app.use(express.json());
+
+// GUI del Game Master (panel de administración) — ANTES de static para evitar el 301 del directorio
+app.get('/gm', (req, res) => {
+  res.sendFile(join(__dirname, '..', 'public', 'gm', 'index.html'));
+});
+
 app.use(express.static(join(__dirname, '..', 'public')));
+
+// GUI del Game Master — panel de administración
+app.get('/gm', (req, res) => {
+  res.sendFile(join(__dirname, '..', 'public', 'gm', 'index.html'));
+});
 
 // --- Persistencia: cargar partida guardada o crear una nueva ---
 function loadState() {
