@@ -64,6 +64,7 @@ async function api(path, opts = {}) {
 function initStory() {
   $('#story-upload').addEventListener('change', handleStoryUpload);
   $('#btn-reparse').addEventListener('click', handleReparse);
+  $('#btn-gen-entities').addEventListener('click', handleGenerateEntities);
 }
 
 async function loadStory() {
@@ -133,6 +134,28 @@ async function handleReparse() {
     toast('¡Historia reestructurada!', 'success');
   } catch (err) {
     toast(err.message, 'error');
+  }
+}
+
+async function handleGenerateEntities() {
+  if (!story) {
+    toast('Primero sube una historia', 'error');
+    return;
+  }
+  const btn = $('#btn-gen-entities');
+  btn.disabled = true;
+  btn.textContent = '⏳ Generando...';
+  try {
+    toast('Generando personajes y equipamiento con IA...', 'info');
+    const data = await api('/story/generate-entities', { method: 'POST' });
+    toast(`¡Generados ${data.charsSaved} personajes y ${data.itemsSaved} items!`, 'success');
+    await loadCharacters();
+    await loadEquipment();
+  } catch (err) {
+    toast(err.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '✨ Generar personajes y equipamiento';
   }
 }
 

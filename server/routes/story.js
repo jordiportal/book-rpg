@@ -1,7 +1,8 @@
 // Rutas de historia — carga, parseo y gestión de capítulos/escenas
 import { Router } from 'express';
-import { saveStory, getStory, listStories, deleteStory } from '../db.js';
+import { saveStory, getStory, listStories, deleteStory, saveCharacter, listCharacters, saveEquipment, listEquipment } from '../db.js';
 import { chatLLM } from '../llm.js';
+import { generateCharacters, generateEquipment, storyToText } from '../entityGenerator.js';
 import multer from 'multer';
 
 const router = Router();
@@ -141,9 +142,78 @@ router.post('/upload', upload.single('file'), async (req, res) => {
     };
 
     saveStory(story);
-    res.status(201).json({ story });
+
+    // Generación automática de personajes y equipamiento a partir del libro
+    let charsSaved = 0;
+    let itemsSaved = 0;
+    try {
+      const text = storyToText(story);
+      const existingCharNames = listCharacters().map(c => c.name);
+      const existingEqNames = listEquipment().map(e => e.name);
+
+      const [newChars, newItems] = await Promise.all([
+        generateCharacters(text, existingCharNames),
+        generateEquipment(text, existingEqNames)
+      ]);
+
+      for (const c of newChars) {
+        if (existingCharNames.includes(c.name)) continue;
+        await saveCharacter(c);
+        charsSaved++;
+      }
+      for (const e of newItems) {
+        if (existingEqNames.includes(e.name)) continue;
+        await saveEquipment(e);
+        itemsSaved++;
+      }
+    } catch (genErr) {
+      console.error('Error generando entidades en upload:', genErr.message);
+    }
+
+    res.status(201).json({ story, charsSaved, itemsSaved });
   } catch (err) {
     console.error('Error en story/upload:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/story/generate-entities — generar personajes y equipamiento con IA a partir de la historia
+router.post('/generate-entities', async (req, res) => {
+  const stories = listStories();
+  const story = stories[0];
+  if (!story) return res.status(404).json({ error: 'No hay historia cargada' });
+
+  try {
+    const text = storyToText(story);
+    if (!text) return res.status(400).json({ error: 'La historia no tiene contenido' });
+
+    const existingCharNames = listCharacters().map(c => c.name);
+    const existingEqNames = listEquipment().map(e => e.name);
+
+    const [newChars, newItems] = await Promise.all([
+      generateCharacters(text, existingCharNames),
+      generateEquipment(text, existingEqNames)
+    ]);
+
+    // Guardar personajes nuevos
+    let charsSaved = 0;
+    for (const c of newChars) {
+      if (existingCharNames.includes(c.name)) continue;
+      await saveCharacter(c);
+      charsSaved++;
+    }
+
+    // Guardar items nuevos
+    let itemsSaved = 0;
+    for (const e of newItems) {
+      if (existingEqNames.includes(e.name)) continue;
+      await saveEquipment(e);
+      itemsSaved++;
+    }
+
+    res.json({ characters: newChars, equipment: newItems, charsSaved, itemsSaved });
+  } catch (err) {
+    console.error('Error en story/generate-entities:', err.message);
     res.status(500).json({ error: err.message });
   }
 });
