@@ -165,13 +165,14 @@ export function placeVillageCharacters(scene, villageGroup, interactables, regis
 }
 
 // ===================== HUD / UI =====================
-export function buildCharacterPanel(containerId = 'character-panel') {
+export function buildCharacterPanel(containerId = 'character-panel', position = null) {
   let panel = document.getElementById(containerId);
   if (!panel) {
     panel = document.createElement('div');
     panel.id = containerId;
     panel.className = 'panel';
-    panel.style.cssText = 'position:absolute;top:80px;right:14px;min-width:220px;max-width:260px;z-index:10;pointer-events:auto;display:none;';
+    const pos = position || 'position:absolute;top:80px;right:14px;min-width:220px;max-width:260px;z-index:10;pointer-events:auto;display:none;';
+    panel.style.cssText = pos;
     document.body.appendChild(panel);
   }
   return panel;
@@ -189,7 +190,7 @@ export function updateCharacterPanel() {
   let html = '<h3 style="font-size:14px;color:#ffd479;margin-bottom:8px;">🧑‍🤝‍🧑 Compañeros</h3>';
   companions.forEach(c => {
     const stats = getEffectiveStats(c);
-    html += `<div style="margin-bottom:10px;padding:6px;background:rgba(255,255,255,0.05);border-radius:6px;">`;
+    html += `<div data-open-char="${c.id}" style="margin-bottom:10px;padding:6px;background:rgba(255,255,255,0.05);border-radius:6px;cursor:pointer;transition:background 0.2s;" title="Ver equipamiento">`;
     html += `<div style="font-weight:700;font-size:13px;color:#fff;">${c.name}</div>`;
     html += `<div style="font-size:11px;color:#9aa3b2;">${c.race} · ${c.class}</div>`;
     html += `<div style="display:flex;gap:8px;margin-top:4px;font-size:11px;">`;
@@ -199,6 +200,144 @@ export function updateCharacterPanel() {
     html += `</div></div>`;
   });
   panel.innerHTML = html;
+
+  // Hacer clicable cada compañero para abrir su detalle de equipamiento
+  panel.querySelectorAll('[data-open-char]').forEach(el => {
+    el.addEventListener('click', () => {
+      const char = getCharacterById(el.dataset.openChar);
+      if (char) {
+        // El callback global (si existe) abre el detalle con el inventario del jugador
+        if (typeof window.__openCharacterDetail === 'function') {
+          window.__openCharacterDetail(char);
+        }
+      }
+    });
+  });
+}
+
+// ===================== EQUIPAR / DESEQUIPAR =====================
+// Equipa un item a un personaje vía la API y refresca el estado local.
+export async function equipCharacterItem(characterId, slot, equipmentId) {
+  const res = await fetch(`/api/characters/${encodeURIComponent(characterId)}/equip`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ slot, equipmentId })
+  });
+  const data = await res.json();
+  if (data.error) throw new Error(data.error);
+  const idx = _characters.findIndex(c => c.id === characterId);
+  if (idx > -1) _characters[idx] = data.character;
+  return data.character;
+}
+
+// Desequipa un slot de un personaje vía la API y refresca el estado local.
+export async function unequipCharacterItem(characterId, slot) {
+  const res = await fetch(`/api/characters/${encodeURIComponent(characterId)}/unequip`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ slot })
+  });
+  const data = await res.json();
+  if (data.error) throw new Error(data.error);
+  const idx = _characters.findIndex(c => c.id === characterId);
+  if (idx > -1) _characters[idx] = data.character;
+  return data.character;
+}
+
+// Icono y etiqueta para cada slot
+const SLOT_LABELS = {
+  weapon: { icon: '⚔️', label: 'Arma' },
+  armor: { icon: '🛡️', label: 'Armadura' },
+  accessory: { icon: '💍', label: 'Accesorio' }
+};
+
+// Devuelve el item equipado en un slot (o null)
+function getEquippedItem(character, slot) {
+  const eqId = character.equipment && character.equipment[slot];
+  if (!eqId) return null;
+  return getEquipmentById(eqId) || null;
+}
+
+// Renderiza el panel de detalle de un personaje con su equipamiento
+// y la posibilidad de equipar/desequipar items del inventario del jugador.
+export function renderCharacterDetail(character, playerInventory = []) {
+  const panel = buildCharacterPanel('character-detail-panel', 'position:absolute;bottom:90px;right:14px;min-width:240px;max-width:280px;z-index:20;pointer-events:auto;display:none;');
+  panel.style.display = 'block';
+  const stats = getEffectiveStats(character);
+
+  let html = `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">`;
+  html += `<h3 style="font-size:14px;color:#ffd479;margin:0;">${character.name}</h3>`;
+  html += `<button id="char-detail-close" style="background:none;border:none;color:#9aa3b2;font-size:16px;cursor:pointer;">✕</button>`;
+  html += `</div>`;
+  html += `<div style="font-size:11px;color:#9aa3b2;margin-bottom:8px;">${character.race || ''} · ${character.class || ''} · LV${stats.level || 1}</div>`;
+
+  // Stats efectivas
+  html += `<div style="font-size:11px;color:#c8cdd6;margin-bottom:8px;">`;
+  html += `<span style="color:#ff6b6b;">♥ ${stats.hp||0}/${stats.maxHp||0}</span> `;
+  html += `<span style="color:#6ba8ff;">✦ ${stats.mp||0}/${stats.maxMp||0}</span><br>`;
+  html += `Fuerza ${stats.str||0} · Vit ${stats.vit||0} · Agi ${stats.agi||0}<br>`;
+  html += `Dex ${stats.dex||0} · Int ${stats.int||0} · Suerte ${stats.luck||0}`;
+  html += `</div>`;
+
+  // Equipamiento actual
+  html += `<div style="font-size:12px;color:#ffd479;margin-bottom:4px;">🎒 Equipamiento</div>`;
+  ['weapon', 'armor', 'accessory'].forEach(slot => {
+    const s = SLOT_LABELS[slot];
+    const item = getEquippedItem(character, slot);
+    html += `<div style="display:flex;justify-content:space-between;align-items:center;padding:3px 0;font-size:11px;">`;
+    html += `<span style="color:#9aa3b2;">${s.icon} ${s.label}:</span>`;
+    if (item) {
+      html += `<span style="color:#e8e6e3;">${item.name} <button data-unequip="${slot}" style="margin-left:4px;background:rgba(255,255,255,0.1);border:none;color:#ff8a5c;border-radius:4px;padding:1px 6px;cursor:pointer;font-size:10px;">quitar</button></span>`;
+    } else {
+      html += `<span style="color:#6b7280;">—</span>`;
+    }
+    html += `</div>`;
+  });
+
+  // Inventario del jugador (items equipables)
+  const equipable = playerInventory.filter(i => typeof i === 'object' && i.id);
+  if (equipable.length > 0) {
+    html += `<div style="font-size:12px;color:#ffd479;margin:8px 0 4px;">📦 Inventario (equipar)</div>`;
+    equipable.forEach(item => {
+      const slot = item.slot || 'weapon';
+      const s = SLOT_LABELS[slot] || { icon: '📦', label: slot };
+      html += `<div style="display:flex;justify-content:space-between;align-items:center;padding:3px 0;font-size:11px;">`;
+      html += `<span style="color:#c8cdd6;">${s.icon} ${item.name} <span style="color:#6b7280;">(${item.rarity||''})</span></span>`;
+      html += `<button data-equip="${slot}" data-item="${item.id}" style="background:rgba(255,255,255,0.1);border:none;color:#7ee0a0;border-radius:4px;padding:1px 8px;cursor:pointer;font-size:10px;">equipar</button>`;
+      html += `</div>`;
+    });
+  } else {
+    html += `<div style="font-size:11px;color:#6b7280;margin-top:6px;">No hay items equipables en tu inventario.</div>`;
+  }
+
+  panel.innerHTML = html;
+
+  // Eventos
+  panel.querySelector('#char-detail-close').addEventListener('click', () => {
+    panel.style.display = 'none';
+  });
+  panel.querySelectorAll('[data-unequip]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      try {
+        await unequipCharacterItem(character.id, btn.dataset.unequip);
+        renderCharacterDetail(getCharacterById(character.id), playerInventory);
+        updateCharacterPanel();
+      } catch (err) {
+        console.error('Error desequipando:', err.message);
+      }
+    });
+  });
+  panel.querySelectorAll('[data-equip]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      try {
+        await equipCharacterItem(character.id, btn.dataset.equip, btn.dataset.item);
+        renderCharacterDetail(getCharacterById(character.id), playerInventory);
+        updateCharacterPanel();
+      } catch (err) {
+        console.error('Error equipando:', err.message);
+      }
+    });
+  });
 }
 
 // ===================== INICIALIZACIÓN =====================

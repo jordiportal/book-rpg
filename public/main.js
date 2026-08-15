@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { renderZone } from './zoneRenderer.js';
-import { initCharacterSystem, placeVillageCharacters, updateCharacterPanel, getEffectiveStats, getCharacterById, getCharacters } from './characterManager.js';
+import { initCharacterSystem, placeVillageCharacters, updateCharacterPanel, getEffectiveStats, getCharacterById, getCharacters, renderCharacterDetail, getEquipment } from './characterManager.js';
 
 // ============ ESCENA 3D ============
 const container = document.getElementById('scene-container');
@@ -595,6 +595,16 @@ initCharacterSystem().then(() => {
   placeVillageCharacters(scene, villageGroup, interactables, registerInteractive);
   updateCharacterPanel();
 });
+
+// Abre el detalle de equipamiento de un personaje (usado por el panel de compañeros)
+window.__openCharacterDetail = (character) => {
+  // El inventario del jugador: items equipables (objetos con id y slot)
+  const inv = (gameState && gameState.inventory) || [];
+  // El inventario del jugador guarda nombres; los items reales vienen de la API de equipment.
+  // Mostramos el equipamiento disponible de la API para poder equipar.
+  const allEquip = getEquipment();
+  renderCharacterDetail(character, allEquip);
+};
 
 // ============ ANIMACIÓN ============
 // `keys`/`INTERACT_RANGE` deben declararse ANTES de que animate() se ejecute (TDZ de const)
