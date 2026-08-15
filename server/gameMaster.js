@@ -1,7 +1,8 @@
-// Game Master: interpreta las acciones del jugador usando el LLM + RAG del libro
+// Game Master: interpreta las acciones del jugador usando el LLM + RAG del libro + historia real
 import { chatLLM } from './llm.js';
 import { buildContext } from './rag.js';
 import { GAME_CONSTANTS, addLog, gainExp, addJob, gainMoney, advanceDay, canBuyRoxanne } from './gameState.js';
+import { listStories } from './db.js';
 
 // Prompt de sistema del game master. Le decimos que es el director de juego
 // del mundo del libro y que debe ser fiel a la obra.
@@ -41,9 +42,27 @@ REGLAS IMPORTANTES:
    El bloque JSON debe ir en la última línea de tu respuesta, precedido por "###MECANICA###".`;
 }
 
+// Obtiene la historia real de la BD para enriquecer el prompt
+function getStoryContext() {
+  try {
+    const stories = listStories();
+    if (stories.length === 0) return '';
+    const story = stories[0];
+    const chapters = story.chapters || [];
+    let ctx = `\n\nHISTORIA CARGADA: "${story.title}"\n`;
+    chapters.forEach(ch => {
+      ctx += `- Capítulo ${ch.index}: ${ch.title}\n  ${ch.summary || ''}\n`;
+    });
+    return ctx;
+  } catch (e) {
+    return '';
+  }
+}
+
 // Convierte el estado del juego a un resumen para el prompt
 function stateToPrompt(state) {
   const p = state.player;
+  const storyCtx = getStoryContext();
   return `ESTADO ACTUAL DEL JUGADOR:
 - Nombre: ${p.name}
 - Nivel: ${p.level} (EXP: ${p.exp}/${p.expToNext})
@@ -57,7 +76,7 @@ function stateToPrompt(state) {
 - Día: ${state.day} (quedan ${state.daysRemaining} días para el mercado de esclavos)
 - Reputación: ${state.reputation}
 - Inventario: ${state.inventory.length > 0 ? state.inventory.join(', ') : 'vacío'}
-- Progreso: ${JSON.stringify(state.flags)}`;
+- Progreso: ${JSON.stringify(state.flags)}${storyCtx}`;
 }
 
 // Parsea el bloque JSON mecánico de la respuesta del LLM

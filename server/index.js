@@ -7,6 +7,10 @@ import { createInitialState } from './gameState.js';
 import { processAction, identifyTarget } from './gameMaster.js';
 import { initDb, getZone, saveZone, listZones } from './db.js';
 import { generateZone } from './zoneGenerator.js';
+import charactersRouter from './routes/characters.js';
+import equipmentRouter from './routes/equipment.js';
+import storyRouter from './routes/story.js';
+import gmRouter from './routes/gm.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -22,7 +26,6 @@ function loadState() {
     if (existsSync(SAVE_FILE)) {
       const raw = readFileSync(SAVE_FILE, 'utf-8');
       const saved = JSON.parse(raw);
-      // Merge con el estado inicial para no perder campos nuevos
       const base = createInitialState();
       return { ...base, ...saved, player: { ...base.player, ...saved.player } };
     }
@@ -42,19 +45,108 @@ function saveState() {
 
 let gameState = loadState();
 
-// Inicializar la base de datos de zonas al arrancar
-initDb().then(() => {
-  console.log('🗄️  Base de datos de zonas lista');
+// Inicializar BD y sembrar datos de ejemplo
+initDb().then(async () => {
+  console.log('🗄️  Base de datos lista');
+  await seedMockData();
 }).catch((err) => {
   console.error('Error inicializando BD:', err.message);
 });
 
-// GET /api/state -> estado actual
+// ── Datos mock de ejemplo ─────────────────────────────────────────────────
+async function seedMockData() {
+  const { saveCharacter, listCharacters, saveEquipment, listEquipment, saveStory, listStories } = await import('./db.js');
+
+  if (listCharacters().length === 0) {
+    await saveCharacter({
+      id: 'roxanne',
+      name: 'ロクサーヌ',
+      race: 'inu-mimi (perro)',
+      class: 'esclava',
+      description: 'Chica perro de 16 años, esclava en el mercado de esclavos de la ciudad de Beil.',
+      stats: { level: 1, hp: 100, maxHp: 100, mp: 50, maxMp: 50, str: 8, vit: 9, agi: 12, dex: 10, int: 6, luck: 10 },
+      equipment: { weapon: null, armor: null, accessory: null },
+      model3d: { status: 'none', url: null, imageUrl: null, generatedAt: null },
+      tags: ['companion', 'main'],
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    });
+    await saveCharacter({
+      id: 'michio',
+      name: '加賀道夫',
+      race: 'humano',
+      class: '無職',
+      description: 'El protagonista. Estudiante japonés de 17 años transportado a otro mundo.',
+      stats: { level: 1, hp: 100, maxHp: 100, mp: 50, maxMp: 50, str: 10, vit: 10, agi: 10, dex: 10, int: 10, luck: 10 },
+      equipment: { weapon: null, armor: null, accessory: null },
+      model3d: { status: 'none', url: null, imageUrl: null, generatedAt: null },
+      tags: ['main', 'protagonist'],
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    });
+    console.log('🌱 Sembrados 2 personajes de ejemplo');
+  }
+
+  if (listEquipment().length === 0) {
+    await saveEquipment({
+      id: 'durandal',
+      name: 'デュランダル',
+      slot: 'weapon',
+      type: 'espada',
+      rarity: 'legendary',
+      stats: { str: 15, vit: 0, agi: 5, dex: 0, int: 0, luck: 0, hp: 0, mp: 0 },
+      value: 50000,
+      description: 'Espada legendaria forjada con metal del laberinto.',
+      model3d: { status: 'none', url: null, imageUrl: null, generatedAt: null },
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    });
+    console.log('🌱 Sembrado 1 item de equipamiento');
+  }
+
+  if (listStories().length === 0) {
+    await saveStory({
+      id: 'main',
+      title: '異世界迷宮でハーレムを',
+      source: 'manual',
+      originalFile: null,
+      language: 'ja',
+      chapters: [
+        {
+          id: 'cap-1',
+          index: 1,
+          title: 'El despertar en otro mundo',
+          summary: 'Michio despierta en un mundo de fantasía con habilidades de identificación.',
+          content: 'Michio se despierta en un prado desconocido. Descubre que tiene la habilidad de 鑑定...',
+          scenes: [
+            { id: 'esc-1-1', index: 1, title: 'Despertar', summary: 'Michio abre los ojos en otro mundo.', content: 'Michio se despierta en un prado.' },
+            { id: 'esc-1-2', index: 2, title: 'Descubrimiento', summary: 'Descubre su habilidad de identificación.', content: 'Michio descubre que puede ver el nivel de cualquier persona.' }
+          ]
+        },
+        {
+          id: 'cap-2',
+          index: 2,
+          title: 'La primera aldea',
+          summary: 'Michio llega al primer pueblo y conoce el sistema de este mundo.',
+          content: 'Michio camina hasta llegar a un pequeño pueblo.',
+          scenes: [
+            { id: 'esc-2-1', index: 1, title: 'Llegada al pueblo', summary: 'Michio entra en el pueblo.', content: 'El pueblo es pequeño pero acogedor.' },
+            { id: 'esc-2-2', index: 2, title: 'El gremio', summary: 'Michio se registra en el gremio.', content: 'En el gremio, Michio aprende sobre los trabajos.' }
+          ]
+        }
+      ],
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    });
+    console.log('🌱 Sembrada la historia inicial');
+  }
+}
+
+// ── Estado del jugador (existente) ───────────────────────────────────────
 app.get('/api/state', (req, res) => {
   res.json(gameState);
 });
 
-// POST /api/action -> el jugador realiza una acción
 app.post('/api/action', async (req, res) => {
   const { action } = req.body;
   if (!action || typeof action !== 'string' || action.trim() === '') {
@@ -70,7 +162,6 @@ app.post('/api/action', async (req, res) => {
   }
 });
 
-// POST /api/identify -> usar 鑑定
 app.post('/api/identify', async (req, res) => {
   const { target } = req.body;
   if (!target || typeof target !== 'string' || target.trim() === '') {
@@ -85,32 +176,27 @@ app.post('/api/identify', async (req, res) => {
   }
 });
 
-// POST /api/reset -> reiniciar partida
 app.post('/api/reset', (req, res) => {
   gameState = createInitialState();
   saveState();
   res.json(gameState);
 });
 
-// POST /api/save -> guardar partida manualmente
 app.post('/api/save', (req, res) => {
   saveState();
   res.json({ ok: true, savedAt: new Date().toISOString() });
 });
 
-// GET /api/zones -> lista las zonas generadas guardadas
+// ── Zonas (existente) ────────────────────────────────────────────────────
 app.get('/api/zones', (req, res) => {
   res.json({ zones: listZones() });
 });
 
-// GET /api/zone/:id -> devuelve una zona (de BD si existe, si no la genera y guarda)
 app.get('/api/zone/:id', async (req, res) => {
   const id = req.params.id;
   try {
-    // 1. Buscar en BD
     let zone = getZone(id);
     let generated = false;
-    // 2. Si no existe, generarla con el LLM y guardarla
     if (!zone) {
       zone = await generateZone(id, gameState.location);
       saveZone(zone);
@@ -123,8 +209,6 @@ app.get('/api/zone/:id', async (req, res) => {
   }
 });
 
-// GET /api/zone/:id/stream -> genera una zona con progreso en tiempo real (SSE)
-// Emite eventos con los pasos reales: buscar BD, generar LLM, guardar, listo.
 app.get('/api/zone/:id/stream', async (req, res) => {
   const id = req.params.id;
   res.setHeader('Content-Type', 'text/event-stream');
@@ -132,37 +216,31 @@ app.get('/api/zone/:id/stream', async (req, res) => {
   res.setHeader('Connection', 'keep-alive');
   res.flushHeaders();
 
-  // Helper para enviar un evento SSE
   const send = (event, data) => {
     res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
   };
 
   try {
-    // Paso 1: buscar en BD
     send('step', { key: 'db', label: 'Consultando la base de datos...' });
     let zone = getZone(id);
     let generated = false;
 
     if (zone) {
-      // Zona ya guardada: no hace falta generar
       send('step', { key: 'db', label: 'Zona encontrada en la base de datos ✔' });
       send('step', { key: 'done', label: 'Cargando zona guardada...' });
       send('zone', { zone, generated: false });
       return res.end();
     }
 
-    // Paso 2: generar con el LLM
     send('step', { key: 'llm', label: 'Consultando la historia del libro (RAG)...' });
     send('step', { key: 'llm', label: 'El Game Master está generando la zona...' });
     zone = await generateZone(id, gameState.location);
     send('step', { key: 'llm', label: 'Zona generada por el LLM ✔' });
 
-    // Paso 3: guardar en BD
     send('step', { key: 'save', label: 'Guardando la zona en la base de datos...' });
     saveZone(zone);
     send('step', { key: 'save', label: 'Zona persistida ✔' });
 
-    // Paso 4: listo
     send('step', { key: 'done', label: 'Materializando el mundo...' });
     send('zone', { zone, generated: true });
     res.end();
@@ -173,7 +251,6 @@ app.get('/api/zone/:id/stream', async (req, res) => {
   }
 });
 
-// POST /api/zone/generate -> fuerza la regeneración de una zona (borra la guardada)
 app.post('/api/zone/generate', async (req, res) => {
   const { id, location } = req.body;
   if (!id) return res.status(400).json({ error: 'Falta id' });
@@ -186,6 +263,12 @@ app.post('/api/zone/generate', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
+// ── Nuevas rutas del contrato ────────────────────────────────────────────
+app.use('/api/characters', charactersRouter);
+app.use('/api/equipment', equipmentRouter);
+app.use('/api/story', storyRouter);
+app.use('/api/gm', gmRouter);
 
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`🎮 Book-RPG servidor escuchando en http://0.0.0.0:${PORT}`);

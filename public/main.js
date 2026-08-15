@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { renderZone } from './zoneRenderer.js';
+import { initCharacterSystem, placeVillageCharacters, updateCharacterPanel, getEffectiveStats, getCharacterById, getCharacters } from './characterManager.js';
 
 // ============ ESCENA 3D ============
 const container = document.getElementById('scene-container');
@@ -575,13 +576,7 @@ function buildWorld() {
     createTree(Math.cos(angle) * r, Math.sin(angle) * r);
   }
 
-  // NPCs
-  wrapCreateNPC(-3, -4, 0xc8a06a, 'Anciano del pueblo', 'aldeano sabio que conoce el laberinto');
-  wrapCreateNPC(3, -4, 0xb8906a, 'Comerciante', 'vendedor de objetos y provisiones');
-  wrapCreateNPC(-3, 4, 0x9a7a5a, 'Herrero', 'fabricante y reparador de armas');
-  wrapCreateNPC(3, 4, 0xc8a06a, 'Mercader de esclavos', 'vende esclavas como ロクサーヌ');
-
-  // Monstruos
+  // Monstruos genéricos (se mantienen)
   wrapCreateMonster(20, 20);
   wrapCreateMonster(24, 18);
   wrapCreateMonster(-22, 22);
@@ -594,6 +589,12 @@ function buildWorld() {
 }
 
 buildWorld();
+
+// Inicializar personajes reales desde la API
+initCharacterSystem().then(() => {
+  placeVillageCharacters(scene, villageGroup, interactables, registerInteractive);
+  updateCharacterPanel();
+});
 
 // ============ ANIMACIÓN ============
 // `keys`/`INTERACT_RANGE` deben declararse ANTES de que animate() se ejecute (TDZ de const)
@@ -816,6 +817,28 @@ function interactWith(obj) {
   // NPC: hablar según su rol (y diálogo generado si existe)
   const role = obj.userData.npcRole || '';
   const dialog = obj.userData.npcDialog || '';
+  const charId = obj.userData.characterId;
+  
+  // Si es un personaje real de la API, enriquecer la acción con sus stats
+  if (charId && getCharacterById) {
+    const char = getCharacterById(charId);
+    if (char) {
+      const stats = char.stats || {};
+      const eqStats = getEffectiveStats ? getEffectiveStats(char) : stats;
+      const eqList = [];
+      if (char.equipment) {
+        if (char.equipment.weapon) eqList.push('⚔️ ' + char.equipment.weapon);
+        if (char.equipment.armor) eqList.push('🛡️ ' + char.equipment.armor);
+        if (char.equipment.accessory) eqList.push('💍 ' + char.equipment.accessory);
+      }
+      const action = dialog
+        ? `Hablo con ${name} (${role}). ${char.race ? `[${char.race}] ` : ''}LV${stats.level} HP${eqStats.hp}/${eqStats.maxHp}. ${dialog}${eqList.length ? ' Equipo: ' + eqList.join(', ') : ''}`
+        : `Hablo con ${name} (${role}). ${char.race ? `[${char.race}] ` : ''}LV${stats.level} HP${eqStats.hp}/${eqStats.maxHp}.`;
+      sendAction(action);
+      return;
+    }
+  }
+  
   const action = dialog
     ? `Hablo con ${name} (${role}). El personaje dice: "${dialog}"`
     : `Hablo con ${name} (${role})`;
@@ -866,6 +889,56 @@ function updateHUD() {
   document.getElementById('stat-money').textContent = `${gameState.money} ナール`;
   document.getElementById('stat-loc').textContent = gameState.location;
   document.getElementById('stat-days').textContent = `⏳ Quedan ${gameState.daysRemaining} días`;
+  updateCharacterHUD();
+  updateInventoryHUD();
+}
+
+function updateCharacterHUD() {
+  const panel = document.getElementById('character-panel');
+  const list = document.getElementById('character-list');
+  if (!panel || !list) return;
+  
+  // Intentar obtener personajes del sistema de characterManager
+  const chars = (typeof getCharacters === 'function') ? getCharacters() : [];
+  const companions = chars.filter(c => c.tags && c.tags.includes('companion'));
+  
+  if (companions.length === 0) {
+    panel.style.display = 'none';
+    return;
+  }
+  panel.style.display = 'block';
+  
+  let html = '';
+  companions.forEach(c => {
+    const stats = (typeof getEffectiveStats === 'function') ? getEffectiveStats(c) : (c.stats || {});
+    html += `<div style="margin-bottom:8px;padding:5px;background:rgba(255,255,255,0.05);border-radius:5px;">`;
+    html += `<div style="font-weight:700;font-size:12px;color:#fff;">${c.name}</div>`;
+    html += `<div style="font-size:10px;color:#9aa3b2;">${c.race || ''} · LV${stats.level || 1}</div>`;
+    html += `<div style="display:flex;gap:6px;margin-top:3px;font-size:10px;">`;
+    html += `<span style="color:#ff6b6b;">♥ ${stats.hp || 0}/${stats.maxHp || 0}</span>`;
+    html += `<span style="color:#6ba8ff;">✦ ${stats.mp || 0}/${stats.maxMp || 0}</span>`;
+    html += `</div></div>`;
+  });
+  list.innerHTML = html;
+}
+
+function updateInventoryHUD() {
+  const panel = document.getElementById('inventory-panel');
+  const list = document.getElementById('inventory-list');
+  if (!panel || !list) return;
+  
+  const inv = gameState.inventory || [];
+  if (inv.length === 0) {
+    panel.style.display = 'none';
+    return;
+  }
+  panel.style.display = 'block';
+  
+  let html = '';
+  inv.forEach(item => {
+    html += `<div style="padding:2px 0;font-size:11px;">• ${item}</div>`;
+  });
+  list.innerHTML = html;
 }
 
 function setThinking(on) {
