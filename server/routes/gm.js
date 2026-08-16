@@ -18,9 +18,15 @@ function buildStoryContext() {
   const chars = listCharacters(null, story.id);
   const items = listEquipment(null, story.id);
 
-  const chaptersDesc = (story.chapters || []).map(ch =>
-    `- Cap. ${ch.index}: ${ch.title} — ${ch.summary || 'sin resumen'}`
-  ).join('\n') || 'Sin capítulos';
+  // Incluye el contenido REAL y COMPLETO de las escenas en el contexto del chat.
+  // El modelo (deepseek-v4-flash) tiene una ventana de 512K tokens y el libro
+  // completo (~73K tokens) cabe de sobra. Así el GM tiene todo el texto en memoria
+  // y no alucina. El caché del modelo local hace que la 1ª consulta sea lenta
+  // pero las siguientes sean rápidas.
+  const chaptersDesc = (story.chapters || []).map(ch => {
+    const scenesText = (ch.scenes || []).map(sc => sc.content || '').join('\n\n') || ch.content || '';
+    return `- Cap. ${ch.index}: ${ch.title} — ${ch.summary || 'sin resumen'}\n${scenesText}`;
+  }).join('\n') || 'Sin capítulos';
 
   const charsDesc = chars.map(c =>
     `- ${c.name} (${c.race || '?'} / ${c.class || '?'}): ${c.description || 'sin descripción'}`
