@@ -249,6 +249,7 @@ router.post('/', (req, res) => {
     source: 'manual',
     originalFile: null,
     language: data.language || 'es',
+    gameType: data.gameType || 'open_world', // 'open_world' | 'visual_novel'
     chapters: [],
     createdAt: now(),
     updatedAt: now()
@@ -283,6 +284,7 @@ router.post('/upload', upload.single('file'), async (req, res) => {
       source: isEpub ? 'epub' : 'text',
       originalFile: req.file.originalname,
       language: 'ja',
+      gameType: 'open_world', // por defecto; el GM puede cambiarlo a 'visual_novel'
       chapters,
       images,
       coverImage: images.length > 0 ? images[0] : null,
@@ -407,6 +409,7 @@ router.put('/:id', (req, res) => {
   const data = req.body || {};
   if (data.title !== undefined) story.title = data.title;
   if (data.language !== undefined) story.language = data.language;
+  if (data.gameType !== undefined) story.gameType = data.gameType;
   story.updatedAt = now();
   saveStory(story);
   res.json({ story });

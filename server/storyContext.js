@@ -70,6 +70,7 @@ export function deriveStoryContext(story) {
     location: (chapterTitle && !isGenericChapter) ? chapterTitle : 'un lugar desconocido',
     currency: 'ナール',
     daysRemaining: 5,
+    gameType: story.gameType || 'open_world',
     protagonist
   };
 }

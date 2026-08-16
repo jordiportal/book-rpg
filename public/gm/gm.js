@@ -69,6 +69,25 @@ function initStory() {
   $('#btn-new-story').addEventListener('click', handleNewStory);
   $('#story-select').addEventListener('change', handleSelectStory);
   $('#btn-delete-story').addEventListener('click', handleDeleteStory);
+  $('#story-game-type').addEventListener('change', handleGameTypeChange);
+}
+
+async function handleGameTypeChange() {
+  if (!story) return;
+  const gameType = $('#story-game-type').value;
+  try {
+    const data = await api(`/story/${story.id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ gameType })
+    });
+    story = data.story;
+    const label = gameType === 'visual_novel' ? 'Novela visual' : 'Mundo abierto (3D)';
+    toast(`Tipo de juego: ${label}`, 'success');
+  } catch (err) {
+    toast(err.message, 'error');
+    $('#story-game-type').value = story.gameType || 'open_world';
+  }
 }
 
 async function loadStory() {
@@ -155,6 +174,7 @@ function renderStory() {
   content.classList.remove('hidden');
   $('#story-title').textContent = story.title || 'Sin título';
   $('#story-source').textContent = `Fuente: ${story.source || 'manual'} · ${story.chapters?.length || 0} capítulos · ${story.images?.length || 0} imágenes`;
+  $('#story-game-type').value = story.gameType || 'open_world';
 
   // Galería de imágenes extraídas del epub
   const imgWrap = $('#story-images');

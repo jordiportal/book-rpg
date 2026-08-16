@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { renderZone } from './zoneRenderer.js';
 import { initCharacterSystem, placeVillageCharacters, updateCharacterPanel, getEffectiveStats, getCharacterById, getCharacters, renderCharacterDetail, getEquipment } from './characterManager.js';
+import { createVisualNovel } from './visualNovel.js';
 
 // ============ ESCENA 3D ============
 const container = document.getElementById('scene-container');
@@ -1110,6 +1111,36 @@ function getStartingScene() {
   return '🌅 Despiertas en un mundo desconocido. Fuera, un pueblo de casas de madera se extiende bajo un cielo azul.';
 }
 
+// ===== MODO NOVELA VISUAL =====
+let visualNovel = null;
+// Comprueba si la historia activa es de tipo novela visual y, si es así,
+// arranca el modo VN (ocultando el mundo 3D) y devuelve true.
+function maybeStartVisualNovel() {
+  const gt = gameState && gameState.storyContext && gameState.storyContext.gameType;
+  if (gt !== 'visual_novel') {
+    // Si no es novela visual, asegurar que el mundo 3D está visible
+    if (visualNovel) { visualNovel.destroy(); visualNovel = null; }
+    return false;
+  }
+  // Es novela visual: ocultar el mundo 3D y arrancar el modo VN
+  if (!visualNovel) {
+    visualNovel = createVisualNovel();
+  }
+  // Ocultar HUD 3D y mostrar la novela
+  document.getElementById('hud').style.display = 'none';
+  document.getElementById('dialog-panel').style.display = 'none';
+  document.getElementById('interact-prompt').classList.add('hidden');
+  document.getElementById('controls-info').style.display = 'none';
+  if (scene && scene.background) scene.background = new THREE.Color(0x0b0e14);
+  // Cargar la historia completa para la novela visual
+  fetch('/api/story/active').then(r => r.json()).then(d => {
+    if (d.story) visualNovel.start(d.story);
+  }).catch(() => {
+    visualNovel.start({ title: 'Historia', chapters: [], images: [] });
+  });
+  return true;
+}
+
 // Entrar al mundo seleccionado
 enterWorldBtn.addEventListener('click', async () => {
   // Asegurar que la historia seleccionada es la activa y recargar su estado
@@ -1127,6 +1158,8 @@ enterWorldBtn.addEventListener('click', async () => {
     } catch (e) { /* ignorar */ }
   }
   introEl.classList.add('hidden');
+  // Si la historia es novela visual, arrancar ese modo en lugar del 3D
+  if (maybeStartVisualNovel()) return;
   addMsg(getStartingScene(), 'narrator');
   addMsg('💡 Muévete con WASD. Acércate a un personaje y pulsa <b>E</b> para hablar, o a un monstruo y pulsa <b>F</b> para atacar. Haz clic en cualquier personaje para usar 鑑定.', 'system');
   inputEl.focus();
@@ -1134,6 +1167,7 @@ enterWorldBtn.addEventListener('click', async () => {
 
 startBtn.addEventListener('click', () => {
   introEl.classList.add('hidden');
+  if (maybeStartVisualNovel()) return;
   addMsg(getStartingScene(), 'narrator');
   addMsg('💡 Muévete con WASD. Acércate a un personaje y pulsa <b>E</b> para hablar, o a un monstruo y pulsa <b>F</b> para atacar. Haz clic en cualquier personaje para usar 鑑定.', 'system');
   inputEl.focus();
