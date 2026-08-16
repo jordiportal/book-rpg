@@ -10,6 +10,9 @@ server/savegame.json
 server/saves/
 server/session.json
 
+# Imágenes extraídas de los epubs (contenido con copyright, no se versiona)
+public/stories/
+
 # Logs y temporales
 *.log
 npm-debug.log*

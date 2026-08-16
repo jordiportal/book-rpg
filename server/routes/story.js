@@ -2,6 +2,9 @@
 // Cada historia es un juego independiente con su propio contexto (personajes,
 // equipamiento, zonas) y estado aislado.
 import { Router } from 'express';
+import { writeFileSync, mkdirSync, existsSync } from 'fs';
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
 import { saveStory, getStory, listStories, deleteStory, saveCharacter, listCharacters, saveEquipment, listEquipment } from '../db.js';
 import { chatLLM } from '../llm.js';
 import { generateCharacters, generateEquipment, storyToText } from '../entityGenerator.js';
@@ -11,6 +14,11 @@ import AdmZip from 'adm-zip';
 
 const router = Router();
 const upload = multer({ storage: multer.memoryStorage() });
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+// Carpeta donde se guardan las imágenes extraídas de los epubs, servida estáticamente en /stories/
+// __dirname = server/routes → subimos 2 niveles hasta la raíz del proyecto → public/stories
+const STORIES_IMG_DIR = join(__dirname, '..', '..', 'public', 'stories');
 
 function makeId() {
   return 'story_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
@@ -68,6 +76,66 @@ function extractText(buffer, originalName) {
     return buffer.toString('utf-8');
   }
   return buffer.toString('utf-8');
+}
+
+// Extrae el título real del epub desde el OPF (<dc:title>), que es la fuente fiable.
+function extractEpubTitle(buffer) {
+  try {
+    const zip = new AdmZip(buffer);
+    const entries = zip.getEntries();
+    const opf = entries.find(e => e.entryName.toLowerCase().endsWith('.opf'));
+    if (opf) {
+      const content = opf.getData().toString('utf-8');
+      const m = content.match(/<dc:title[^>]*>([\s\S]*?)<\/dc:title>/i);
+      if (m) {
+        const title = m[1]
+          .replace(/<[^>]+>/g, '')
+          .replace(/&amp;/gi, '&')
+          .replace(/&lt;/gi, '<')
+          .replace(/&gt;/gi, '>')
+          .replace(/&quot;/gi, '"')
+          .replace(/&#39;/gi, "'")
+          .trim();
+        if (title) return title;
+      }
+    }
+  } catch (err) {
+    console.error('Error extrayendo título del OPF:', err.message);
+  }
+  return null;
+}
+
+// Extrae las imágenes del epub y las guarda en public/stories/<storyId>/.
+// Devuelve la lista de URLs servibles (/stories/<storyId>/<nombre>).
+function extractEpubImages(buffer, storyId) {
+  const saved = [];
+  try {
+    const zip = new AdmZip(buffer);
+    const entries = zip.getEntries();
+    const imgEntries = entries.filter(e => /\.(png|jpe?g|gif|webp|svg)$/i.test(e.entryName));
+    if (imgEntries.length === 0) return saved;
+
+    const dir = join(STORIES_IMG_DIR, storyId);
+    if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+
+    for (const entry of imgEntries) {
+      try {
+        const data = entry.getData();
+        if (!data || data.length === 0) continue;
+        // Nombre de archivo seguro: basado en el nombre original
+        const base = entry.entryName.split('/').pop();
+        const safeName = base.replace(/[^a-zA-Z0-9._-]/g, '_');
+        const filePath = join(dir, safeName);
+        writeFileSync(filePath, data);
+        saved.push(`/stories/${storyId}/${safeName}`);
+      } catch (e) {
+        console.error('Error guardando imagen epub:', e.message);
+      }
+    }
+  } catch (err) {
+    console.error('Error extrayendo imágenes del epub:', err.message);
+  }
+  return saved;
 }
 
 // Usa el LLM para estructurar texto en capítulos y escenas
@@ -198,13 +266,26 @@ router.post('/upload', upload.single('file'), async (req, res) => {
     const structured = await llmStructureStory(rawText);
     const chapters = normalizeChapters(structured);
 
+    const isEpub = req.file.originalname.toLowerCase().endsWith('.epub');
+    const storyId = makeId();
+    // Título fiable: primero el del OPF (epub), luego el del LLM, luego el nombre del archivo
+    let title = null;
+    if (isEpub) title = extractEpubTitle(req.file.buffer);
+    title = title || structured.title || req.file.originalname.replace(/\.[^.]+$/, '');
+
+    // Extraer y guardar las imágenes del epub (portada + ilustraciones)
+    let images = [];
+    if (isEpub) images = extractEpubImages(req.file.buffer, storyId);
+
     const story = {
-      id: makeId(),
-      title: structured.title || req.file.originalname.replace(/\.[^.]+$/, ''),
-      source: req.file.originalname.toLowerCase().endsWith('.epub') ? 'epub' : 'text',
+      id: storyId,
+      title,
+      source: isEpub ? 'epub' : 'text',
       originalFile: req.file.originalname,
       language: 'ja',
       chapters,
+      images,
+      coverImage: images.length > 0 ? images[0] : null,
       createdAt: now(),
       updatedAt: now()
     };

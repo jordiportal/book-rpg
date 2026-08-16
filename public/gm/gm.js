@@ -154,7 +154,24 @@ function renderStory() {
   empty.classList.add('hidden');
   content.classList.remove('hidden');
   $('#story-title').textContent = story.title || 'Sin título';
-  $('#story-source').textContent = `Fuente: ${story.source || 'manual'} · ${story.chapters?.length || 0} capítulos`;
+  $('#story-source').textContent = `Fuente: ${story.source || 'manual'} · ${story.chapters?.length || 0} capítulos · ${story.images?.length || 0} imágenes`;
+
+  // Galería de imágenes extraídas del epub
+  const imgWrap = $('#story-images');
+  imgWrap.innerHTML = '';
+  const imgs = story.images || [];
+  if (imgs.length > 0) {
+    const grid = document.createElement('div');
+    grid.className = 'img-grid';
+    imgs.forEach((src, i) => {
+      const item = document.createElement('div');
+      item.className = 'img-item' + (i === 0 ? ' cover' : '');
+      item.innerHTML = `<img src="${src}" alt="Ilustración ${i + 1}" loading="lazy">`;
+      item.addEventListener('click', () => window.open(src, '_blank'));
+      grid.appendChild(item);
+    });
+    imgWrap.appendChild(grid);
+  }
 
   const list = $('#chapters-list');
   list.innerHTML = '';
