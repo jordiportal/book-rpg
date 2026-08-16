@@ -903,6 +903,11 @@ function updateHUD() {
   document.getElementById('stat-money').textContent = `${gameState.money} ナール`;
   document.getElementById('stat-loc').textContent = gameState.location;
   document.getElementById('stat-days').textContent = `⏳ Quedan ${gameState.daysRemaining} días`;
+  // Objetivo dinámico según la historia activa
+  const objEl = document.getElementById('objective-text');
+  if (objEl && gameState.storyContext && gameState.storyContext.objective) {
+    objEl.textContent = gameState.storyContext.objective;
+  }
   updateCharacterHUD();
   updateInventoryHUD();
 }
@@ -1097,6 +1102,14 @@ async function loadWorlds() {
   }
 }
 
+// Devuelve la escena inicial de la historia activa (o un texto genérico)
+function getStartingScene() {
+  if (gameState && gameState.storyContext && gameState.storyContext.startingScene) {
+    return gameState.storyContext.startingScene;
+  }
+  return '🌅 Despiertas en un mundo desconocido. Fuera, un pueblo de casas de madera se extiende bajo un cielo azul.';
+}
+
 // Entrar al mundo seleccionado
 enterWorldBtn.addEventListener('click', async () => {
   // Asegurar que la historia seleccionada es la activa y recargar su estado
@@ -1114,14 +1127,14 @@ enterWorldBtn.addEventListener('click', async () => {
     } catch (e) { /* ignorar */ }
   }
   introEl.classList.add('hidden');
-  addMsg('🌅 Despiertas en un establo de un mundo desconocido. Fuera, un pueblo de casas de madera se extiende bajo un cielo azul.', 'narrator');
+  addMsg(getStartingScene(), 'narrator');
   addMsg('💡 Muévete con WASD. Acércate a un personaje y pulsa <b>E</b> para hablar, o a un monstruo y pulsa <b>F</b> para atacar. Haz clic en cualquier personaje para usar 鑑定.', 'system');
   inputEl.focus();
 });
 
 startBtn.addEventListener('click', () => {
   introEl.classList.add('hidden');
-  addMsg('🌅 Despiertas en un establo de un mundo desconocido. Fuera, un pueblo de casas de madera se extiende bajo un cielo azul.', 'narrator');
+  addMsg(getStartingScene(), 'narrator');
   addMsg('💡 Muévete con WASD. Acércate a un personaje y pulsa <b>E</b> para hablar, o a un monstruo y pulsa <b>F</b> para atacar. Haz clic en cualquier personaje para usar 鑑定.', 'system');
   inputEl.focus();
 });

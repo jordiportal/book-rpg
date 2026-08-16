@@ -16,10 +16,11 @@ export const GAME_CONSTANTS = {
   SKILLS: ['鑑定', '二つ名', '再設定', '経験値増加']
 };
 
-export function createInitialState() {
+export function createInitialState(ctx) {
+  ctx = ctx || {};
   return {
     player: {
-      name: '加賀道夫',
+      name: ctx.playerName || '加賀道夫',
       level: 1,
       exp: 0,
       expToNext: 100,
@@ -42,17 +43,12 @@ export function createInitialState() {
     },
     money: GAME_CONSTANTS.STARTING_MONEY,
     inventory: [],
-    location: '最初の村', // 最初の村 | ベイル | 迷宮
+    location: ctx.location || '最初の村', // 最初の村 | ベイル | 迷宮
     day: 1,
-    daysRemaining: GAME_CONSTANTS.DAYS_TO_BUY,
+    daysRemaining: ctx.daysRemaining ?? GAME_CONSTANTS.DAYS_TO_BUY,
     reputation: 0,
     // Progreso de la historia
-    flags: {
-      metRoxanne: false,
-      boughtRoxanne: false,
-      clearedBandits: false,
-      exploredLabyrinth: false
-    },
+    flags: {},
     log: []
   };
 }

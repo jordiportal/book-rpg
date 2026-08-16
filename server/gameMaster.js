@@ -3,26 +3,28 @@ import { chatLLM } from './llm.js';
 import { buildContext } from './rag.js';
 import { GAME_CONSTANTS, addLog, gainExp, addJob, gainMoney, advanceDay, canBuyRoxanne } from './gameState.js';
 import { listStories } from './db.js';
+import { getActiveStoryId } from './session.js';
+import { getActiveStoryContext } from './storyContext.js';
 
-// Prompt de sistema del game master. Le decimos que es el director de juego
-// del mundo del libro y que debe ser fiel a la obra.
+// Prompt de sistema del game master. Se construye a partir de la historia ACTIVA
+// (título, objetivo, protagonista, escena inicial), no hardcodeado a una novela.
 function buildSystemPrompt() {
-  return `Eres el Game Master de un RPG de mundo abierto basado en la novela japonesa "異世界迷宮でハーレムを" (Harem in the Labyrinth of Another World) de 蘇我捨恥.
+  const ctx = getActiveStoryContext();
+  return `Eres el Game Master de un RPG de mundo abierto basado en la historia "${ctx.title}".
 
-El jugador es 加賀道夫 (Kaga Michio), un estudiante japonés de 17 años que fue transportado a este mundo de fantasía. Tiene la habilidad especial de "鑑定" (identificación/appraisal) que le permite ver el nombre, nivel y trabajo de cualquier persona o monstruo.
+El jugador es ${ctx.playerName}, el protagonista de esta historia.
 
-Tu trabajo es dirigir la historia de forma fiel al libro, pero también permitir al jugador tomar decisiones libres. El mundo incluye:
-- 最初の村 (el primer pueblo) donde despertó
-- ベイル (Beil), la ciudad principal
-- 迷宮 (el laberinto/dungeon) donde se gana experiencia
-- Monstruos como スローラビット (conejos monstruo)
-- El sistema de gremios, monedas (ナール), y el mercado de esclavos
+Tu trabajo es dirigir la historia de forma fiel a la obra, pero también permitir al jugador tomar decisiones libres.
 
-El objetivo principal del volumen 1 es que el jugador consiga 420,000 nales para comprar a ロクサーヌ (Roxanne), una chica perro (inu-mimi) de 16 años, en el mercado de esclavos, antes de que pasen 5 días.
+OBJETIVO DE LA HISTORIA:
+${ctx.objective}
+
+ESCENA INICIAL:
+${ctx.startingScene}
 
 REGLAS IMPORTANTES:
 1. Responde SIEMPRE en español, con narración inmersiva en segunda persona.
-2. Sé fiel al libro: usa el contexto de la obra que se te proporciona. No inventes personajes o lugares que contradigan la historia.
+2. Sé fiel a la historia: usa el contexto de la obra que se te proporciona. No inventes personajes o lugares que contradigan la historia.
 3. Interpreta las acciones del jugador de forma creativa pero coherente con el mundo.
 4. Cuando el jugador use "鑑定" (identificación), describe el nombre, nivel y trabajo del objetivo.
 5. Mantén el tono de la novela: aventura, humor cínico del protagonista, y el sistema de juego tipo RPG.
@@ -38,16 +40,17 @@ REGLAS IMPORTANTES:
    - "job": nuevo trabajo obtenido (o null)
    - "flag": flag de historia a activar (o null)
    - "description": resumen breve de la consecuencia
-   
+
    El bloque JSON debe ir en la última línea de tu respuesta, precedido por "###MECANICA###".`;
 }
 
-// Obtiene la historia real de la BD para enriquecer el prompt
+// Obtiene la historia ACTIVA de la BD para enriquecer el prompt
 function getStoryContext() {
   try {
+    const id = getActiveStoryId();
     const stories = listStories();
-    if (stories.length === 0) return '';
-    const story = stories[0];
+    const story = id ? stories.find(s => s.id === id) : stories[0];
+    if (!story) return '';
     const chapters = story.chapters || [];
     let ctx = `\n\nHISTORIA CARGADA: "${story.title}"\n`;
     chapters.forEach(ch => {

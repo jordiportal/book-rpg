@@ -8,6 +8,7 @@ import { processAction, identifyTarget } from './gameMaster.js';
 import { initDb, getZone, saveZone, listZones } from './db.js';
 import { generateZone } from './zoneGenerator.js';
 import { initSession, getActiveStoryId, setActiveStoryId } from './session.js';
+import { getActiveStoryContext } from './storyContext.js';
 import charactersRouter from './routes/characters.js';
 import equipmentRouter from './routes/equipment.js';
 import storyRouter from './routes/story.js';
@@ -47,13 +48,13 @@ function loadState() {
     if (existsSync(file)) {
       const raw = readFileSync(file, 'utf-8');
       const saved = JSON.parse(raw);
-      const base = createInitialState();
+      const base = createInitialState(getActiveStoryContext());
       return { ...base, ...saved, player: { ...base.player, ...saved.player } };
     }
   } catch (err) {
     console.error('Error cargando partida:', err.message);
   }
-  return createInitialState();
+  return createInitialState(getActiveStoryContext());
 }
 
 function saveState() {
@@ -209,14 +210,16 @@ async function seedMockData() {
 app.get('/api/state', (req, res) => {
   // Recargar el estado de la historia activa (por si cambió)
   gameState = loadState();
-  res.json(gameState);
+  const ctx = getActiveStoryContext();
+  res.json({ ...gameState, storyContext: ctx });
 });
 
 // Recargar el estado del jugador desde el archivo de la historia activa
 // (se llama al cambiar de historia activa)
 app.post('/api/state/reload', (req, res) => {
   gameState = loadState();
-  res.json(gameState);
+  const ctx = getActiveStoryContext();
+  res.json({ ...gameState, storyContext: ctx });
 });
 
 app.post('/api/action', async (req, res) => {
