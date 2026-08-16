@@ -633,6 +633,16 @@ function initChat() {
         const s = stories.find(x => x.id === data.storyId);
         if (s) $('#chat-context-label').textContent = `Asistente con contexto de: ${s.title}`;
       }
+      // Si el LLM ejecutó acciones sobre el juego, refrescar la UI para reflejarlas
+      if (data.actions && data.actions.length > 0) {
+        const changed = data.actions.some(a => a.ok);
+        if (changed) {
+          await loadStory();
+          await loadCharacters();
+          await loadEquipment();
+          toast(`⚙️ ${data.actions.length} acción(es) ejecutada(s) sobre el juego`, 'success');
+        }
+      }
     } catch (err) {
       typing.querySelector('.chat-bubble').textContent = `⚠️ Error: ${err.message}`;
     } finally {

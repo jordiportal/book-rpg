@@ -1,8 +1,9 @@
 // Rutas de asistencia IA para la GUI del Game Master
 import { Router } from 'express';
-import { chatLLM } from '../llm.js';
+import { chatLLM, chatLLMFull } from '../llm.js';
 import { getStory, listStories, listCharacters, listEquipment } from '../db.js';
 import { getActiveStoryId } from '../session.js';
+import { GM_TOOLS, executeTool } from '../gmTools.js';
 
 const router = Router();
 
@@ -45,6 +46,9 @@ router.post('/chat', async (req, res) => {
 
   const system = `Eres el asistente del Game Master de un RPG de mundo abierto guiado por IA, basado en una novela (isekai). Tu rol es ayudar al GM a PREPARAR la partida: aclarar la trama, sugerir escenas, desarrollar personajes, plantear encuentros, enemigos, recompensas, giros de guion, etc. Responde en español, de forma práctica y concreta, como un copiloto de narración. Si te preguntan por algo que no está en la historia, dilo con honestidad y propón opciones coherentes con el tono de la obra.
 
+IMPORTANTE — TIENES HERRAMIENTAS PARA MODIFICAR EL JUEGO:
+Puedes ejecutar acciones reales sobre los datos del juego (historias, capítulos, personajes, equipamiento) usando las herramientas disponibles. Cuando el GM te pida crear, editar, borrar, equipar o generar algo, USA la herramienta correspondiente en lugar de limitarte a describirlo. Tras ejecutar una herramienta, confirma al GM qué has hecho y el resultado obtenido. Si una operación requiere un ID que no conoces, lista primero (list_stories, list_characters, list_equipment, list_chapters) para obtenerlo.
+
 CONTEXTO ACTUAL DEL JUEGO (historia activa):
 ${context}`;
 
@@ -52,17 +56,67 @@ ${context}`;
   const recent = Array.isArray(history) ? history.slice(-10) : [];
 
   try {
-    const response = await chatLLM({
-      system,
-      messages: [
-        ...recent,
-        { role: 'user', content: message }
-      ],
-      temperature: 0.8,
-      maxTokens: 900
-    });
+    // Bucle de function calling: el LLM puede pedir ejecutar varias tools seguidas
+    const messages = [
+      ...recent,
+      { role: 'user', content: message }
+    ];
+    const toolResults = [];
+    let finalReply = '';
+    let iterations = 0;
+    const MAX_ITER = 8;
 
-    res.json({ reply: response, storyId: story ? story.id : null });
+    while (iterations < MAX_ITER) {
+      const msg = await chatLLMFull({
+        system,
+        messages,
+        tools: GM_TOOLS,
+        temperature: 0.7,
+        maxTokens: 900
+      });
+
+      if (!msg) throw new Error('LLM no devolvió respuesta');
+
+      const toolCalls = msg.tool_calls || [];
+      if (toolCalls.length === 0) {
+        finalReply = msg.content?.trim() || '';
+        break;
+      }
+
+      // Ejecutar todas las tool calls de este turno
+      for (const tc of toolCalls) {
+        if (tc.type !== 'function') continue;
+        const name = tc.function?.name;
+        let args = {};
+        try { args = JSON.parse(tc.function?.arguments || '{}'); } catch { args = {}; }
+        const { ok, result, error } = await executeTool(name, args);
+        toolResults.push({ name, args, ok, result, error });
+        messages.push({ role: 'assistant', content: null, tool_calls: [tc] });
+        messages.push({
+          role: 'tool',
+          tool_call_id: tc.id,
+          content: JSON.stringify(ok ? result : { error })
+        });
+      }
+      iterations++;
+    }
+
+    // Si se ejecutaron tools, añadir un resumen de acciones al final
+    let actionsSummary = '';
+    if (toolResults.length > 0) {
+      actionsSummary = '\n\n[Acciones ejecutadas sobre el juego]:\n' + toolResults
+        .map(t => {
+          const okTxt = t.ok ? 'OK' : `ERROR: ${t.error}`;
+          return `- ${t.name}(${JSON.stringify(t.args)}) → ${okTxt}`;
+        })
+        .join('\n');
+    }
+
+    res.json({
+      reply: (finalReply || 'Hecho.') + actionsSummary,
+      storyId: story ? story.id : null,
+      actions: toolResults.map(t => ({ name: t.name, args: t.args, ok: t.ok, error: t.error }))
+    });
   } catch (err) {
     console.error('Error en gm/chat:', err.message);
     res.status(500).json({ error: err.message });
