@@ -30,7 +30,7 @@ function buildStoryContext() {
     `- ${e.name} (${e.slot || '?'}, ${e.rarity || '?'}): ${e.description || 'sin descripción'}`
   ).join('\n') || 'Sin equipamiento';
 
-  const context = `HISTORIA ACTIVA: "${story.title}" (fuente: ${story.source || '?'}, ${story.chapters?.length || 0} capítulos, ${story.images?.length || 0} imágenes)\n\nCAPÍTULOS:\n${chaptersDesc}\n\nPERSONAJES:\n${charsDesc}\n\nEQUIPAMIENTO:\n${itemsDesc}`;
+  const context = `HISTORIA ACTIVA: "${story.title}" (id: ${story.id}, fuente: ${story.source || '?'}, ${story.chapters?.length || 0} capítulos, ${story.images?.length || 0} imágenes)\n\nCAPÍTULOS:\n${chaptersDesc}\n\nPERSONAJES:\n${charsDesc}\n\nEQUIPAMIENTO:\n${itemsDesc}`;
 
   return { story, context };
 }

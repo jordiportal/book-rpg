@@ -22,6 +22,21 @@ const SAVE_FILE = join(__dirname, 'savegame.json');
 
 app.use(express.json());
 
+// Logging de peticiones API para diagnóstico
+app.use((req, res, next) => {
+  const start = Date.now();
+  if (req.path.startsWith('/api/')) {
+    console.log(`[${new Date().toISOString()}] → ${req.method} ${req.path}`);
+  }
+  res.on('finish', () => {
+    const ms = Date.now() - start;
+    if (req.path.startsWith('/api/')) {
+      console.log(`[${new Date().toISOString()}] ${req.method} ${req.path} → ${res.statusCode} (${ms}ms)`);
+    }
+  });
+  next();
+});
+
 // GUI del Game Master (panel de administración) — ANTES de static para evitar el 301 del directorio
 app.get('/gm', (req, res) => {
   res.sendFile(join(__dirname, '..', 'public', 'gm', 'index.html'));
