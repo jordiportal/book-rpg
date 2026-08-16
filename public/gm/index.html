@@ -18,6 +18,7 @@
         <button class="nav-btn active" data-section="story">📚 Historia</button>
         <button class="nav-btn" data-section="characters">👥 Personajes</button>
         <button class="nav-btn" data-section="equipment">⚔️ Equipamiento</button>
+        <button class="nav-btn" data-section="chat">💬 Chat GM</button>
       </nav>
       <div class="sidebar-footer">
         <a href="/" class="link">← Volver al juego</a>
@@ -79,6 +80,27 @@
         <div id="equipment-list" class="cards-grid"></div>
         <div id="equipment-empty" class="empty-state hidden">
           <p>No hay items de equipamiento. Crea el primero.</p>
+        </div>
+      </section>
+
+      <!-- ===== CHAT GM ===== -->
+      <section id="section-chat" class="section">
+        <header class="section-header">
+          <h2>💬 Chat del Game Master</h2>
+          <span class="muted" id="chat-context-label">Asistente con contexto de la historia activa</span>
+        </header>
+        <div class="chat-container">
+          <div class="chat-messages" id="chat-messages">
+            <div class="chat-msg chat-msg-bot">
+              <div class="chat-bubble">
+                ¡Hola, Game Master! 👋 Soy tu copiloto de narración. Pregúntame sobre la historia activa: cómo preparar una escena, desarrollar personajes, plantear encuentros, enemigos, recompensas o giros de guion.
+              </div>
+            </div>
+          </div>
+          <div class="chat-input-row">
+            <textarea id="chat-input" rows="2" placeholder="Escribe tu pregunta sobre la historia... (Enter para enviar, Shift+Enter para salto de línea)"></textarea>
+            <button class="btn btn-primary" id="chat-send">➤ Enviar</button>
+          </div>
         </div>
       </section>
     </main>

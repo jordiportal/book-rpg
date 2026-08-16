@@ -604,7 +604,74 @@ function initModals() {
   });
 }
 
-// ===== ASISTENTE IA =====
+// ===== CHAT GM =====
+let chatHistory = [];
+
+function initChat() {
+  const input = $('#chat-input');
+  const sendBtn = $('#chat-send');
+
+  async function send() {
+    const text = input.value.trim();
+    if (!text) return;
+    input.value = '';
+    appendChatMsg('user', text);
+    chatHistory.push({ role: 'user', content: text });
+
+    const typing = appendChatMsg('bot', '…', true);
+    sendBtn.disabled = true;
+    try {
+      const data = await api('/gm/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: text, history: chatHistory.slice(0, -1) })
+      });
+      typing.querySelector('.chat-bubble').textContent = data.reply || '(sin respuesta)';
+      chatHistory.push({ role: 'assistant', content: data.reply || '' });
+      // Actualizar la etiqueta de contexto con la historia activa
+      if (data.storyId) {
+        const s = stories.find(x => x.id === data.storyId);
+        if (s) $('#chat-context-label').textContent = `Asistente con contexto de: ${s.title}`;
+      }
+    } catch (err) {
+      typing.querySelector('.chat-bubble').textContent = `⚠️ Error: ${err.message}`;
+    } finally {
+      sendBtn.disabled = false;
+      scrollChat();
+    }
+  }
+
+  sendBtn.addEventListener('click', send);
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      send();
+    }
+  });
+}
+
+function appendChatMsg(role, text, typing = false) {
+  const wrap = document.createElement('div');
+  wrap.className = `chat-msg chat-msg-${role}`;
+  const bubble = document.createElement('div');
+  bubble.className = 'chat-bubble';
+  if (typing) bubble.classList.add('typing');
+  bubble.textContent = text;
+  wrap.appendChild(bubble);
+  $('#chat-messages').appendChild(wrap);
+  scrollChat();
+  return wrap;
+}
+
+function scrollChat() {
+  const box = $('#chat-messages');
+  box.scrollTop = box.scrollHeight;
+}
+
+// Registrar el chat en la inicialización
+document.addEventListener('DOMContentLoaded', () => {
+  initChat();
+});
 document.addEventListener('click', async (e) => {
   const btn = e.target.closest('.btn-suggest');
   if (!btn) return;
