@@ -1,30 +1,69 @@
-// ===== Modo Novela Visual =====
+// ===== Modo Novela Visual (estilo eroge) =====
 // Se activa cuando la historia activa tiene gameType === 'visual_novel'.
-// En lugar del mundo 3D, muestra una interfaz de novela visual que sigue el
-// texto del libro (capítulos/escenas) directamente, con fondo de las imágenes
-// del epub y acciones puntuales al Game Master. Requiere menos LLM que el
-// mundo abierto: el texto viene del libro, no se genera.
+// Layout estilo eroge: imagen de fondo arriba, caja de diálogo abajo.
+// El texto del libro se divide en párrafos y se muestra UNO a la vez:
+// el original (japonés) arriba y su traducción al español como subtítulo
+// (vía /api/vn/translate con caché). Incluye menú de guardado/carga en
+// slots (localStorage), modo auto y navegación por capítulos.
 //
 // API expuesta:
-//   window.VN = { start(story), advance(), choose(option), sendAction(text), destroy() }
+//   window.VN = { start(story), destroy(), advance(), sendAction(text) }
 
 export function createVisualNovel() {
   let story = null;
   let chapterIdx = 0;
-  let sceneIdx = 0;
+  let paraIdx = 0;      // índice del párrafo dentro de la escena actual
   let bgImages = [];
   let bgIdx = 0;
   let overlay = null;
-  let textEl = null;
-  let titleEl = null;
+  let nameEl = null;
+  let jaEl = null;
+  let esEl = null;
   let chapterEl = null;
-  let optionsEl = null;
-  let inputEl = null;
-  let sendBtn = null;
+  let saveMenuEl = null;
+  let loadMenuEl = null;
   let thinkingEl = null;
-  let history = []; // historial de texto mostrado
-  let autoScroll = true;
+  let translateCache = {}; // caché local de traducciones
+  let autoMode = false;
+  let autoTimer = null;
 
+  const SAVE_KEY = 'bookrpg_vn_saves';
+
+  // ---- Utilidades ----
+  function currentScene() {
+    const ch = story.chapters[chapterIdx];
+    if (!ch) return null;
+    const scenes = ch.scenes || [];
+    if (scenes.length > 0) return scenes[Math.min(0, scenes.length - 1)];
+    return ch;
+  }
+
+  // Divide el texto de la escena en párrafos legibles
+  function splitParagraphs(text) {
+    if (!text) return [];
+    return text
+      .split(/\n{2,}/)            // separar por líneas en blanco
+      .map(p => p.replace(/\s+/g, ' ').trim())
+      .filter(p => p.length > 0);
+  }
+
+  function currentParagraphs() {
+    const scene = currentScene();
+    const text = (scene && (scene.content || scene.summary)) || '';
+    return splitParagraphs(text);
+  }
+
+  function speakerName(para) {
+    const m = para.match(/^「([^」]{1,20})」/);
+    if (m) return m[1];
+    return '';
+  }
+
+  function cleanDialogue(para) {
+    return para.replace(/^「[^」]{1,20}」\s*/, '');
+  }
+
+  // ---- Construcción del DOM ----
   function build() {
     if (overlay) return;
     overlay = document.createElement('div');
@@ -32,56 +71,100 @@ export function createVisualNovel() {
     overlay.innerHTML = `
       <div class="vn-bg" id="vn-bg"></div>
       <div class="vn-shade"></div>
+
+      <!-- Barra superior -->
       <div class="vn-top">
         <div class="vn-chapter" id="vn-chapter"></div>
-        <button class="vn-btn vn-btn-ghost" id="vn-exit">✕ Salir</button>
-      </div>
-      <div class="vn-content">
-        <div class="vn-title" id="vn-title"></div>
-        <div class="vn-scroll" id="vn-scroll">
-          <div class="vn-text" id="vn-text"></div>
+        <div class="vn-top-btns">
+          <button class="vn-btn vn-btn-ghost" id="vn-auto">⏩ Auto</button>
+          <button class="vn-btn vn-btn-ghost" id="vn-save">💾 Guardar</button>
+          <button class="vn-btn vn-btn-ghost" id="vn-load">📂 Cargar</button>
+          <button class="vn-btn vn-btn-ghost" id="vn-exit">✕ Salir</button>
         </div>
-        <div class="vn-options" id="vn-options"></div>
-        <div class="vn-input-row">
-          <input id="vn-input" type="text" placeholder="Acción libre (opcional)..." autocomplete="off">
-          <button class="vn-btn" id="vn-send">➤</button>
-        </div>
-        <div class="vn-hint">Click / Enter para avanzar · escribe una acción para pedir al GM</div>
       </div>
-      <div class="vn-thinking" id="vn-thinking"><div class="vn-spinner"></div><span>El Game Master está respondiendo...</span></div>
+
+      <!-- Zona de imagen (arriba) -->
+      <div class="vn-stage" id="vn-stage">
+        <div class="vn-stage-title" id="vn-stage-title"></div>
+        <div class="vn-stage-progress" id="vn-progress"></div>
+      </div>
+
+      <!-- Caja de diálogo (abajo) -->
+      <div class="vn-dialog" id="vn-dialog">
+        <div class="vn-name" id="vn-name"></div>
+        <div class="vn-dialog-text">
+          <div class="vn-ja" id="vn-ja"></div>
+          <div class="vn-es" id="vn-es"></div>
+        </div>
+        <div class="vn-dialog-actions">
+          <button class="vn-btn" id="vn-prev">⬅</button>
+          <button class="vn-btn vn-btn-primary" id="vn-next">Siguiente ➡</button>
+          <button class="vn-btn" id="vn-action-btn">✎ Acción</button>
+        </div>
+        <div class="vn-input-row hidden" id="vn-input-row">
+          <input id="vn-input" type="text" placeholder="Acción libre para el GM..." autocomplete="off">
+          <button class="vn-btn vn-btn-primary" id="vn-send">➤</button>
+        </div>
+      </div>
+
+      <!-- Menú de guardado / carga -->
+      <div class="vn-menu hidden" id="vn-save-menu">
+        <div class="vn-menu-title">💾 Guardar partida</div>
+        <div class="vn-slots" id="vn-save-slots"></div>
+        <button class="vn-btn vn-btn-ghost vn-menu-close" data-close="save">Cerrar</button>
+      </div>
+      <div class="vn-menu hidden" id="vn-load-menu">
+        <div class="vn-menu-title">📂 Cargar partida</div>
+        <div class="vn-slots" id="vn-load-slots"></div>
+        <button class="vn-btn vn-btn-ghost vn-menu-close" data-close="load">Cerrar</button>
+      </div>
+
+      <div class="vn-thinking" id="vn-thinking"><div class="vn-spinner"></div><span>Traduciendo / consultando al GM...</span></div>
     `;
     document.body.appendChild(overlay);
 
-    textEl = overlay.querySelector('#vn-text');
-    titleEl = overlay.querySelector('#vn-title');
+    nameEl = overlay.querySelector('#vn-name');
+    jaEl = overlay.querySelector('#vn-ja');
+    esEl = overlay.querySelector('#vn-es');
     chapterEl = overlay.querySelector('#vn-chapter');
-    optionsEl = overlay.querySelector('#vn-options');
-    inputEl = overlay.querySelector('#vn-input');
-    sendBtn = overlay.querySelector('#vn-send');
+    saveMenuEl = overlay.querySelector('#vn-save-menu');
+    loadMenuEl = overlay.querySelector('#vn-load-menu');
     thinkingEl = overlay.querySelector('#vn-thinking');
-    const scrollEl = overlay.querySelector('#vn-scroll');
 
-    // Click en el área de texto → avanzar
-    overlay.querySelector('#vn-scroll').addEventListener('click', () => {
-      if (thinkingEl.style.display === 'flex') return;
-      advance();
-    });
-    // Enter en input → enviar acción (o avanzar si vacío)
-    inputEl.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') {
-        e.preventDefault();
-        if (inputEl.value.trim()) sendAction(inputEl.value);
-        else advance();
-      }
-    });
-    sendBtn.addEventListener('click', () => {
-      if (inputEl.value.trim()) sendAction(inputEl.value);
-      else advance();
-    });
+    // Navegación
+    overlay.querySelector('#vn-next').addEventListener('click', () => advance());
+    overlay.querySelector('#vn-prev').addEventListener('click', () => prev());
+    overlay.querySelector('#vn-auto').addEventListener('click', toggleAuto);
+    overlay.querySelector('#vn-save').addEventListener('click', () => openMenu('save'));
+    overlay.querySelector('#vn-load').addEventListener('click', () => openMenu('load'));
     overlay.querySelector('#vn-exit').addEventListener('click', () => {
       if (confirm('¿Salir de la novela visual?')) destroy();
     });
-    // Tecla espacio/Enter global → avanzar
+    overlay.querySelector('#vn-action-btn').addEventListener('click', () => {
+      overlay.querySelector('#vn-input-row').classList.toggle('hidden');
+    });
+    overlay.querySelector('#vn-send').addEventListener('click', () => {
+      const inp = overlay.querySelector('#vn-input');
+      if (inp.value.trim()) sendAction(inp.value);
+    });
+    overlay.querySelector('#vn-input').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        const inp = overlay.querySelector('#vn-input');
+        if (inp.value.trim()) sendAction(inp.value);
+      }
+    });
+    // Cerrar menús
+    overlay.querySelectorAll('.vn-menu-close').forEach((b) => {
+      b.addEventListener('click', () => closeMenus());
+    });
+    // Click en la caja de diálogo → avanzar
+    overlay.querySelector('#vn-dialog').addEventListener('click', (e) => {
+      if (e.target.closest('button') || e.target.closest('input')) return;
+      if (thinkingEl.style.display === 'flex') return;
+      advance();
+    });
+    // Teclado
     document.addEventListener('keydown', vnKeyHandler);
   }
 
@@ -92,6 +175,9 @@ export function createVisualNovel() {
       e.preventDefault();
       if (thinkingEl.style.display === 'flex') return;
       advance();
+    } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      prev();
     }
   }
 
@@ -107,106 +193,191 @@ export function createVisualNovel() {
     }
   }
 
-  function currentScene() {
-    const ch = story.chapters[chapterIdx];
-    if (!ch) return null;
-    const scenes = ch.scenes || [];
-    if (scenes.length > 0) return scenes[Math.min(sceneIdx, scenes.length - 1)];
-    return ch; // capítulo sin escenas: usar el propio capítulo
+  // ---- Traducción ----
+  async function translate(text) {
+    if (!text || !text.trim()) return '';
+    const key = text.trim().slice(0, 3000);
+    if (translateCache[key]) return translateCache[key];
+    setThinking(true);
+    try {
+      const res = await fetch('/api/vn/translate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: key })
+      });
+      const data = await res.json();
+      const t = data.translation || '';
+      translateCache[key] = t;
+      return t;
+    } catch (err) {
+      console.error('Error traduciendo:', err);
+      return '';
+    } finally {
+      setThinking(false);
+    }
   }
 
-  function render() {
+  // ---- Render ----
+  async function render() {
     const ch = story.chapters[chapterIdx];
     if (!ch) return;
-    const scene = currentScene();
-    const text = (scene && (scene.content || scene.summary)) || ch.content || ch.summary || '';
-    chapterEl.textContent = `Capítulo ${ch.index}: ${ch.title}`;
-    titleEl.textContent = story.title || '';
-    textEl.textContent = text;
-    // Mostrar resumen del capítulo como cabecera de escena
-    if (scene && scene !== ch && scene.summary && scene.summary !== 'Texto completo') {
-      // añadir el resumen como párrafo introductorio
-    }
+    const paras = currentParagraphs();
+    if (paras.length === 0) return;
+    paraIdx = Math.min(paraIdx, paras.length - 1);
+    const para = paras[paraIdx];
+
+    chapterEl.textContent = `第${ch.index}章 · ${ch.title}`;
+    overlay.querySelector('#vn-stage-title').textContent = ch.title || '';
+    overlay.querySelector('#vn-progress').textContent = `${paraIdx + 1} / ${paras.length}`;
+    nameEl.textContent = speakerName(para) || '';
+    jaEl.textContent = cleanDialogue(para);
+    esEl.textContent = '…';
     setBg();
-    // Scroll al inicio
-    const scrollEl = overlay.querySelector('#vn-scroll');
-    scrollEl.scrollTop = 0;
-    // Botones de navegación de capítulo
-    renderNav();
+    // Traducir en segundo plano
+    const t = await translate(cleanDialogue(para));
+    esEl.textContent = t || '';
+    updateNavButtons();
   }
 
-  function renderNav() {
-    optionsEl.innerHTML = '';
-    const prevBtn = document.createElement('button');
-    prevBtn.className = 'vn-btn';
-    prevBtn.textContent = '⬅ Capítulo anterior';
-    prevBtn.disabled = chapterIdx <= 0;
-    prevBtn.addEventListener('click', () => { chapterIdx = Math.max(0, chapterIdx - 1); sceneIdx = 0; render(); });
-    optionsEl.appendChild(prevBtn);
-
-    const nextBtn = document.createElement('button');
-    nextBtn.className = 'vn-btn vn-btn-primary';
-    nextBtn.textContent = 'Capítulo siguiente ➡';
-    nextBtn.disabled = chapterIdx >= story.chapters.length - 1;
-    nextBtn.addEventListener('click', () => { chapterIdx = Math.min(story.chapters.length - 1, chapterIdx + 1); sceneIdx = 0; render(); });
-    optionsEl.appendChild(nextBtn);
-
-    // Si hay escenas, navegación de escena
-    const ch = story.chapters[chapterIdx];
-    if (ch && (ch.scenes || []).length > 1) {
-      const sceneNav = document.createElement('div');
-      sceneNav.className = 'vn-scene-nav';
-      const prevScene = document.createElement('button');
-      prevScene.className = 'vn-btn';
-      prevScene.textContent = '⬅ Escena';
-      prevScene.disabled = sceneIdx <= 0;
-      prevScene.addEventListener('click', () => { sceneIdx = Math.max(0, sceneIdx - 1); render(); });
-      sceneNav.appendChild(prevScene);
-      const nextScene = document.createElement('button');
-      nextScene.className = 'vn-btn';
-      nextScene.textContent = 'Escena ➡';
-      nextScene.disabled = sceneIdx >= (ch.scenes || []).length - 1;
-      nextScene.addEventListener('click', () => { sceneIdx = Math.min((ch.scenes || []).length - 1, sceneIdx + 1); render(); });
-      sceneNav.appendChild(nextScene);
-      optionsEl.appendChild(sceneNav);
-    }
+  function updateNavButtons() {
+    const next = overlay.querySelector('#vn-next');
+    const prev = overlay.querySelector('#vn-prev');
+    const paras = currentParagraphs();
+    const isLastPara = paraIdx >= paras.length - 1;
+    const isLastChapter = chapterIdx >= story.chapters.length - 1;
+    next.textContent = (isLastPara && isLastChapter) ? 'Fin' : 'Siguiente ➡';
+    prev.disabled = chapterIdx === 0 && paraIdx === 0;
   }
 
   function advance() {
-    // Avanzar: si hay escenas, pasar a la siguiente; si no, siguiente capítulo
-    const ch = story.chapters[chapterIdx];
-    if (!ch) return;
-    const scenes = ch.scenes || [];
-    if (scenes.length > 0 && sceneIdx < scenes.length - 1) {
-      sceneIdx++;
+    const paras = currentParagraphs();
+    if (paraIdx < paras.length - 1) {
+      paraIdx++;
     } else if (chapterIdx < story.chapters.length - 1) {
       chapterIdx++;
-      sceneIdx = 0;
+      paraIdx = 0;
     } else {
-      addLine('— Fin del libro —');
+      showToast('🏁 Fin del libro');
       return;
     }
     render();
   }
 
-  function addLine(text) {
-    const p = document.createElement('div');
-    p.className = 'vn-line';
-    p.textContent = text;
-    textEl.appendChild(p);
-    const scrollEl = overlay.querySelector('#vn-scroll');
-    scrollEl.scrollTop = scrollEl.scrollHeight;
+  function prev() {
+    if (paraIdx > 0) {
+      paraIdx--;
+    } else if (chapterIdx > 0) {
+      chapterIdx--;
+      paraIdx = currentParagraphs().length - 1;
+    } else {
+      return;
+    }
+    render();
+  }
+
+  // ---- Auto ----
+  function toggleAuto() {
+    autoMode = !autoMode;
+    const btn = overlay.querySelector('#vn-auto');
+    btn.textContent = autoMode ? '⏸ Pausa' : '⏩ Auto';
+    btn.classList.toggle('vn-active', autoMode);
+    if (autoMode) {
+      autoTimer = setInterval(() => {
+        if (thinkingEl.style.display === 'flex') return;
+        advance();
+      }, 4000);
+    } else if (autoTimer) {
+      clearInterval(autoTimer);
+      autoTimer = null;
+    }
+  }
+
+  // ---- Guardado / Carga (slots en localStorage) ----
+  function getSaves() {
+    try {
+      return JSON.parse(localStorage.getItem(SAVE_KEY)) || {};
+    } catch {
+      return {};
+    }
+  }
+  function setSaves(saves) {
+    localStorage.setItem(SAVE_KEY, JSON.stringify(saves));
+  }
+
+  function openMenu(type) {
+    closeMenus();
+    const menu = type === 'save' ? saveMenuEl : loadMenuEl;
+    const slotsEl = menu.querySelector('.vn-slots');
+    slotsEl.innerHTML = '';
+    const saves = getSaves();
+    for (let i = 1; i <= 6; i++) {
+      const slot = document.createElement('div');
+      slot.className = 'vn-slot';
+      const data = saves[i];
+      const label = data
+        ? `Slot ${i} — ${data.chapterTitle || ''} · párrafo ${(data.paraIdx || 0) + 1}`
+        : `Slot ${i} — Vacío`;
+      slot.innerHTML = `<span class="vn-slot-label">${label}</span>`;
+      if (type === 'save') {
+        slot.addEventListener('click', () => {
+          const ch = story.chapters[chapterIdx];
+          saves[i] = {
+            chapterIdx, paraIdx, bgIdx,
+            chapterTitle: ch ? `第${ch.index}章 ${ch.title}` : '',
+            savedAt: new Date().toISOString()
+          };
+          setSaves(saves);
+          showToast(`💾 Guardado en Slot ${i}`);
+          closeMenus();
+        });
+      } else {
+        if (data) {
+          slot.classList.add('vn-slot-filled');
+          slot.addEventListener('click', () => {
+            chapterIdx = data.chapterIdx || 0;
+            paraIdx = data.paraIdx || 0;
+            bgIdx = data.bgIdx || 0;
+            closeMenus();
+            render();
+            showToast(`📂 Cargado Slot ${i}`);
+          });
+        } else {
+          slot.classList.add('vn-slot-empty');
+        }
+      }
+      slotsEl.appendChild(slot);
+    }
+    menu.classList.remove('hidden');
+  }
+
+  function closeMenus() {
+    saveMenuEl.classList.add('hidden');
+    loadMenuEl.classList.add('hidden');
+  }
+
+  function showToast(msg) {
+    let toast = overlay.querySelector('.vn-toast');
+    if (!toast) {
+      toast = document.createElement('div');
+      toast.className = 'vn-toast';
+      overlay.appendChild(toast);
+    }
+    toast.textContent = msg;
+    toast.classList.add('show');
+    setTimeout(() => toast.classList.remove('show'), 2000);
   }
 
   function setThinking(on) {
     thinkingEl.style.display = on ? 'flex' : 'none';
-    sendBtn.disabled = on;
   }
 
+  // ---- Acción libre al GM ----
   async function sendAction(text) {
     if (!text || !text.trim()) return;
-    addLine('🧑 ' + text);
-    inputEl.value = '';
+    const inp = overlay.querySelector('#vn-input');
+    inp.value = '';
+    overlay.querySelector('#vn-input-row').classList.add('hidden');
+    showToast('🧑 ' + text);
     setThinking(true);
     try {
       const res = await fetch('/api/action', {
@@ -216,37 +387,31 @@ export function createVisualNovel() {
       });
       const data = await res.json();
       if (data.error) {
-        addLine('⚠️ ' + data.error);
+        showToast('⚠️ ' + data.error);
       } else {
-        addLine('📖 ' + (data.narrative || '(sin respuesta)'));
-        if (data.mechanics) {
-          const m = data.mechanics;
-          const parts = [];
-          if (m.exp) parts.push(`+${m.exp} EXP`);
-          if (m.money) parts.push(`${m.money > 0 ? '+' : ''}${m.money} ナール`);
-          if (parts.length) addLine('📊 ' + parts.join(' · '));
-        }
+        showToast('📖 ' + (data.narrative || '(sin respuesta)'));
       }
     } catch (err) {
-      addLine('⚠️ Error de conexión: ' + err.message);
+      showToast('⚠️ Error de conexión');
     } finally {
       setThinking(false);
     }
   }
 
+  // ---- API pública ----
   function start(storyData) {
     story = storyData;
     chapterIdx = 0;
-    sceneIdx = 0;
+    paraIdx = 0;
     bgImages = (story.images || []).slice();
     bgIdx = 0;
     build();
     overlay.style.display = 'flex';
     render();
-    addLine('📖 Modo novela visual. Haz click o pulsa Enter para avanzar por el libro.');
   }
 
   function destroy() {
+    if (autoTimer) clearInterval(autoTimer);
     if (overlay) {
       overlay.remove();
       overlay = null;
@@ -254,5 +419,5 @@ export function createVisualNovel() {
     document.removeEventListener('keydown', vnKeyHandler);
   }
 
-  return { start, advance, sendAction, destroy };
+  return { start, destroy, advance, sendAction };
 }

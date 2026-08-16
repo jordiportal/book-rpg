@@ -13,6 +13,7 @@ import charactersRouter from './routes/characters.js';
 import equipmentRouter from './routes/equipment.js';
 import storyRouter from './routes/story.js';
 import gmRouter from './routes/gm.js';
+import vnRouter from './routes/vn.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -368,6 +369,7 @@ app.use('/api/characters', charactersRouter);
 app.use('/api/equipment', equipmentRouter);
 app.use('/api/story', storyRouter);
 app.use('/api/gm', gmRouter);
+app.use('/api/vn', vnRouter);
 
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`🎮 Book-RPG servidor escuchando en http://0.0.0.0:${PORT}`);
