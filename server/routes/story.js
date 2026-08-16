@@ -7,6 +7,7 @@ import { chatLLM } from '../llm.js';
 import { generateCharacters, generateEquipment, storyToText } from '../entityGenerator.js';
 import { getActiveStoryId, setActiveStoryId } from '../session.js';
 import multer from 'multer';
+import AdmZip from 'adm-zip';
 
 const router = Router();
 const upload = multer({ storage: multer.memoryStorage() });
@@ -17,25 +18,54 @@ function makeId() {
 
 function now() { return new Date().toISOString(); }
 
-// Extrae texto plano de un buffer (txt o epub crudo)
+// Extrae texto plano de un buffer (txt o epub)
 function extractText(buffer, originalName) {
   const name = originalName.toLowerCase();
   if (name.endsWith('.txt')) {
     return buffer.toString('utf-8');
   }
   if (name.endsWith('.epub')) {
-    // Hack: extraer texto entre tags HTML dentro del ZIP crudo
-    const raw = buffer.toString('utf-8');
-    const texts = [];
-    const regex = />([^<]{3,})</g;
-    let m;
-    while ((m = regex.exec(raw)) !== null) {
-      const t = m[1].trim();
-      if (t.length > 10 && !t.startsWith('<?xml') && !t.startsWith('<!')) {
-        texts.push(t);
+    // Un epub es un ZIP con XHTML. Lo descomprimimos y extraemos el texto real.
+    try {
+      const zip = new AdmZip(buffer);
+      const entries = zip.getEntries();
+      const texts = [];
+      for (const entry of entries) {
+        const en = entry.entryName.toLowerCase();
+        // Solo contenido XHTML/HTML (no cubiertas, estilos, etc.)
+        if (!en.endsWith('.xhtml') && !en.endsWith('.html') && !en.endsWith('.htm')) continue;
+        if (en.includes('toc') || en.includes('nav') || en.includes('cover')) continue;
+        let html;
+        try {
+          html = entry.getData().toString('utf-8');
+        } catch {
+          continue;
+        }
+        // Quitar etiquetas y entidades HTML para quedarnos con el texto
+        const text = html
+          .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+          .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+          .replace(/<br\s*\/?>/gi, '\n')
+          .replace(/<\/p>/gi, '\n\n')
+          .replace(/<\/h[1-6]>/gi, '\n\n')
+          .replace(/<[^>]+>/g, ' ')
+          .replace(/&nbsp;/gi, ' ')
+          .replace(/&amp;/gi, '&')
+          .replace(/&lt;/gi, '<')
+          .replace(/&gt;/gi, '>')
+          .replace(/&quot;/gi, '"')
+          .replace(/&#39;/gi, "'")
+          .replace(/[ \t]+/g, ' ')
+          .replace(/\n{3,}/g, '\n\n')
+          .trim();
+        if (text.length > 20) texts.push(text);
       }
+      const joined = texts.join('\n\n');
+      if (joined.trim().length > 0) return joined;
+    } catch (err) {
+      console.error('Error descomprimiendo epub:', err.message);
     }
-    return texts.join('\n\n');
+    return buffer.toString('utf-8');
   }
   return buffer.toString('utf-8');
 }

@@ -8,6 +8,7 @@
     "index-book": "node server/bookIndex.js"
   },
   "dependencies": {
+    "adm-zip": "^0.6.0",
     "express": "^4.19.2",
     "multer": "^2.2.0",
     "sql.js": "^1.14.2"
