@@ -2,11 +2,12 @@
 import express from 'express';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
-import { readFileSync, writeFileSync, existsSync } from 'fs';
+import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs';
 import { createInitialState } from './gameState.js';
 import { processAction, identifyTarget } from './gameMaster.js';
 import { initDb, getZone, saveZone, listZones } from './db.js';
 import { generateZone } from './zoneGenerator.js';
+import { initSession, getActiveStoryId, setActiveStoryId } from './session.js';
 import charactersRouter from './routes/characters.js';
 import equipmentRouter from './routes/equipment.js';
 import storyRouter from './routes/story.js';
@@ -15,6 +16,7 @@ import gmRouter from './routes/gm.js';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const app = express();
 const PORT = process.env.PORT || 4200;
+const SAVE_DIR = join(__dirname, 'saves');
 const SAVE_FILE = join(__dirname, 'savegame.json');
 
 app.use(express.json());
@@ -32,10 +34,18 @@ app.get('/gm', (req, res) => {
 });
 
 // --- Persistencia: cargar partida guardada o crear una nueva ---
+// El estado del jugador se guarda POR HISTORIA (cada historia es un juego independiente).
+function saveFileForStory() {
+  const storyId = getActiveStoryId();
+  if (storyId) return join(SAVE_DIR, `${storyId}.json`);
+  return SAVE_FILE;
+}
+
 function loadState() {
   try {
-    if (existsSync(SAVE_FILE)) {
-      const raw = readFileSync(SAVE_FILE, 'utf-8');
+    const file = saveFileForStory();
+    if (existsSync(file)) {
+      const raw = readFileSync(file, 'utf-8');
       const saved = JSON.parse(raw);
       const base = createInitialState();
       return { ...base, ...saved, player: { ...base.player, ...saved.player } };
@@ -48,7 +58,11 @@ function loadState() {
 
 function saveState() {
   try {
-    writeFileSync(SAVE_FILE, JSON.stringify(gameState, null, 2));
+    const file = saveFileForStory();
+    if (!existsSync(SAVE_DIR)) {
+      mkdirSync(SAVE_DIR, { recursive: true });
+    }
+    writeFileSync(file, JSON.stringify(gameState, null, 2));
   } catch (err) {
     console.error('Error guardando partida:', err.message);
   }
@@ -56,13 +70,51 @@ function saveState() {
 
 let gameState = loadState();
 
-// Inicializar BD y sembrar datos de ejemplo
+// Inicializar sesión (historia activa) y BD, y sembrar datos de ejemplo
+initSession();
 initDb().then(async () => {
   console.log('🗄️  Base de datos lista');
+  await migrateLegacyData();
   await seedMockData();
 }).catch((err) => {
   console.error('Error inicializando BD:', err.message);
 });
+
+// Migra los datos existentes sin storyId (creados antes del aislamiento por historia)
+// asignándolos a la historia 'main' (la historia por defecto sembrada).
+async function migrateLegacyData() {
+  const { listCharacters, saveCharacter, listEquipment, saveEquipment, listZones, saveZone } = await import('./db.js');
+  let migrated = 0;
+
+  const chars = listCharacters();
+  for (const c of chars) {
+    if (!c.storyId) {
+      c.storyId = 'main';
+      saveCharacter(c);
+      migrated++;
+    }
+  }
+
+  const items = listEquipment();
+  for (const e of items) {
+    if (!e.storyId) {
+      e.storyId = 'main';
+      saveEquipment(e);
+      migrated++;
+    }
+  }
+
+  const zones = listZones();
+  for (const z of zones) {
+    if (!z.storyId) {
+      z.storyId = 'main';
+      saveZone(z);
+      migrated++;
+    }
+  }
+
+  if (migrated > 0) console.log(`🔄 Migrados ${migrated} datos legacy a la historia 'main'`);
+}
 
 // ── Datos mock de ejemplo ─────────────────────────────────────────────────
 async function seedMockData() {
@@ -155,6 +207,15 @@ async function seedMockData() {
 
 // ── Estado del jugador (existente) ───────────────────────────────────────
 app.get('/api/state', (req, res) => {
+  // Recargar el estado de la historia activa (por si cambió)
+  gameState = loadState();
+  res.json(gameState);
+});
+
+// Recargar el estado del jugador desde el archivo de la historia activa
+// (se llama al cambiar de historia activa)
+app.post('/api/state/reload', (req, res) => {
+  gameState = loadState();
   res.json(gameState);
 });
 
@@ -200,16 +261,21 @@ app.post('/api/save', (req, res) => {
 
 // ── Zonas (existente) ────────────────────────────────────────────────────
 app.get('/api/zones', (req, res) => {
-  res.json({ zones: listZones() });
+  const storyId = getActiveStoryId();
+  res.json({ zones: listZones(storyId) });
 });
 
 app.get('/api/zone/:id', async (req, res) => {
   const id = req.params.id;
+  const storyId = getActiveStoryId();
   try {
     let zone = getZone(id);
     let generated = false;
+    // Solo usar la zona si pertenece a la historia activa
+    if (zone && zone.storyId && zone.storyId !== storyId) zone = null;
     if (!zone) {
       zone = await generateZone(id, gameState.location);
+      zone.storyId = storyId;
       saveZone(zone);
       generated = true;
     }
@@ -222,6 +288,7 @@ app.get('/api/zone/:id', async (req, res) => {
 
 app.get('/api/zone/:id/stream', async (req, res) => {
   const id = req.params.id;
+  const storyId = getActiveStoryId();
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
   res.setHeader('Connection', 'keep-alive');
@@ -236,7 +303,7 @@ app.get('/api/zone/:id/stream', async (req, res) => {
     let zone = getZone(id);
     let generated = false;
 
-    if (zone) {
+    if (zone && (!zone.storyId || zone.storyId === storyId)) {
       send('step', { key: 'db', label: 'Zona encontrada en la base de datos ✔' });
       send('step', { key: 'done', label: 'Cargando zona guardada...' });
       send('zone', { zone, generated: false });
@@ -246,6 +313,7 @@ app.get('/api/zone/:id/stream', async (req, res) => {
     send('step', { key: 'llm', label: 'Consultando la historia del libro (RAG)...' });
     send('step', { key: 'llm', label: 'El Game Master está generando la zona...' });
     zone = await generateZone(id, gameState.location);
+    zone.storyId = storyId;
     send('step', { key: 'llm', label: 'Zona generada por el LLM ✔' });
 
     send('step', { key: 'save', label: 'Guardando la zona en la base de datos...' });
@@ -265,8 +333,10 @@ app.get('/api/zone/:id/stream', async (req, res) => {
 app.post('/api/zone/generate', async (req, res) => {
   const { id, location } = req.body;
   if (!id) return res.status(400).json({ error: 'Falta id' });
+  const storyId = getActiveStoryId();
   try {
     const zone = await generateZone(id, location || gameState.location);
+    zone.storyId = storyId;
     saveZone(zone);
     res.json({ zone, generated: true });
   } catch (err) {

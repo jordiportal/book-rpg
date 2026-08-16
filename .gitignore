@@ -7,6 +7,8 @@ server/zones.db-journal
 
 # Estado del jugador (persistencia local)
 server/savegame.json
+server/saves/
+server/session.json
 
 # Logs y temporales
 *.log

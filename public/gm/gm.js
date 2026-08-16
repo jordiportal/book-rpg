@@ -61,21 +61,85 @@ async function api(path, opts = {}) {
 }
 
 // ===== HISTORIA =====
+let stories = [];
 function initStory() {
   $('#story-upload').addEventListener('change', handleStoryUpload);
   $('#btn-reparse').addEventListener('click', handleReparse);
   $('#btn-gen-entities').addEventListener('click', handleGenerateEntities);
+  $('#btn-new-story').addEventListener('click', handleNewStory);
+  $('#story-select').addEventListener('change', handleSelectStory);
+  $('#btn-delete-story').addEventListener('click', handleDeleteStory);
 }
 
 async function loadStory() {
   try {
     const data = await api('/story');
+    stories = data.stories || [];
     story = data.story;
+    renderStorySelector();
     renderStory();
   } catch (err) {
     console.error('Error cargando historia:', err);
     story = null;
+    stories = [];
+    renderStorySelector();
     renderStory();
+  }
+}
+
+function renderStorySelector() {
+  const sel = $('#story-select');
+  sel.innerHTML = '';
+  stories.forEach(s => {
+    const opt = document.createElement('option');
+    opt.value = s.id;
+    opt.textContent = s.title || 'Sin título';
+    if (story && s.id === story.id) opt.selected = true;
+    sel.appendChild(opt);
+  });
+}
+
+async function handleNewStory() {
+  const title = prompt('Nombre de la nueva historia:', 'Nueva historia');
+  if (title === null) return;
+  try {
+    const data = await api('/story', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title }) });
+    story = data.story;
+    toast('Nueva historia creada. Sube un archivo o edítala.', 'success');
+    await loadStory();
+    await loadCharacters();
+    await loadEquipment();
+  } catch (err) {
+    toast(err.message, 'error');
+  }
+}
+
+async function handleSelectStory() {
+  const storyId = $('#story-select').value;
+  if (!storyId) return;
+  try {
+    const data = await api('/story/select', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ storyId }) });
+    story = data.story;
+    toast('Historia activa: ' + (story.title || 'Sin título'), 'success');
+    await loadStory();
+    await loadCharacters();
+    await loadEquipment();
+  } catch (err) {
+    toast(err.message, 'error');
+  }
+}
+
+async function handleDeleteStory() {
+  if (!story) return;
+  if (!confirm(`¿Borrar la historia "${story.title}" y todos sus datos?`)) return;
+  try {
+    await api(`/story/${story.id}`, { method: 'DELETE' });
+    toast('Historia borrada', 'success');
+    await loadStory();
+    await loadCharacters();
+    await loadEquipment();
+  } catch (err) {
+    toast(err.message, 'error');
   }
 }
 
@@ -117,7 +181,10 @@ async function handleStoryUpload(e) {
     const data = await api('/story/upload', { method: 'POST', body: fd });
     story = data.story;
     renderStory();
-    toast('¡Historia cargada!', 'success');
+    toast(`¡Historia cargada! (${data.charsSaved || 0} personajes, ${data.itemsSaved || 0} items generados)`, 'success');
+    await loadStory();
+    await loadCharacters();
+    await loadEquipment();
   } catch (err) {
     toast(err.message, 'error');
   }

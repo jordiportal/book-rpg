@@ -1,6 +1,7 @@
 // Rutas de personajes — CRUD + equipamiento + generación 3D
 import { Router } from 'express';
 import { saveCharacter, getCharacter, listCharacters, deleteCharacter, getEquipment } from '../db.js';
+import { getActiveStoryId } from '../session.js';
 
 const router = Router();
 
@@ -10,9 +11,10 @@ function makeId() {
 
 function now() { return new Date().toISOString(); }
 
-// GET /api/characters — listar (con filtro opcional por tag)
+// GET /api/characters — listar (con filtro opcional por tag), solo de la historia activa
 router.get('/', (req, res) => {
-  let chars = listCharacters();
+  const storyId = getActiveStoryId();
+  let chars = listCharacters(null, storyId);
   if (req.query.tag) {
     chars = chars.filter(c => Array.isArray(c.tags) && c.tags.includes(req.query.tag));
   }
@@ -24,6 +26,7 @@ router.post('/', (req, res) => {
   const data = req.body || {};
   const character = {
     id: makeId(),
+    storyId: getActiveStoryId(),
     name: data.name || 'Sin nombre',
     race: data.race || '',
     class: data.class || '',

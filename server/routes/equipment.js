@@ -1,6 +1,7 @@
 // Rutas de equipamiento — CRUD
 import { Router } from 'express';
 import { saveEquipment, getEquipment, listEquipment, deleteEquipment } from '../db.js';
+import { getActiveStoryId } from '../session.js';
 
 const router = Router();
 
@@ -10,9 +11,10 @@ function makeId() {
 
 function now() { return new Date().toISOString(); }
 
-// GET /api/equipment — listar (con filtro opcional por slot)
+// GET /api/equipment — listar (con filtro opcional por slot), solo de la historia activa
 router.get('/', (req, res) => {
-  let items = listEquipment();
+  const storyId = getActiveStoryId();
+  let items = listEquipment(null, storyId);
   if (req.query.slot) {
     items = items.filter(e => e.slot === req.query.slot);
   }
@@ -24,6 +26,7 @@ router.post('/', (req, res) => {
   const data = req.body || {};
   const item = {
     id: makeId(),
+    storyId: getActiveStoryId(),
     name: data.name || 'Sin nombre',
     slot: data.slot || 'weapon',
     type: data.type || '',

@@ -31,6 +31,7 @@
         <header class="section-header">
           <h2>📚 Historia</h2>
           <div class="actions">
+            <button class="btn btn-secondary" id="btn-new-story">➕ Nueva historia</button>
             <label class="btn btn-primary">
               📤 Subir archivo
               <input type="file" id="story-upload" accept=".txt,.epub" hidden>
@@ -39,8 +40,13 @@
             <button class="btn btn-secondary" id="btn-gen-entities">✨ Generar personajes y equipamiento</button>
           </div>
         </header>
+        <div class="story-selector" id="story-selector">
+          <label>Historias:</label>
+          <select id="story-select"></select>
+          <button class="btn btn-ghost btn-sm" id="btn-delete-story" title="Borrar historia activa">🗑️</button>
+        </div>
         <div id="story-empty" class="empty-state">
-          <p>No hay historia cargada. Sube un archivo .txt o .epub para empezar.</p>
+          <p>No hay historia cargada. Crea una nueva o sube un archivo .txt / .epub para empezar.</p>
         </div>
         <div id="story-content" class="hidden">
           <div class="story-meta">
