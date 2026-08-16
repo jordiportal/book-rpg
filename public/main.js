@@ -1046,15 +1046,39 @@ async function loadWorlds() {
     const res = await fetch('/api/story');
     const data = await res.json();
     const stories = data.stories || [];
-    worldSelector.innerHTML = '';
+    const grid = document.getElementById('world-grid');
+    grid.innerHTML = '';
+    let selectedId = data.activeStoryId || (stories[0] && stories[0].id);
     stories.forEach(s => {
-      const opt = document.createElement('option');
-      opt.value = s.id;
-      opt.textContent = s.title || 'Historia sin título';
-      worldSelector.appendChild(opt);
+      const card = document.createElement('div');
+      card.className = 'world-card' + (s.id === selectedId ? ' selected' : '');
+      card.dataset.id = s.id;
+      // Miniatura: portada si existe, si no un placeholder
+      const thumb = document.createElement('div');
+      thumb.className = 'thumb' + (s.coverImage ? '' : ' placeholder');
+      if (s.coverImage) {
+        const img = document.createElement('img');
+        img.src = s.coverImage;
+        img.alt = s.title || 'Portada';
+        img.loading = 'lazy';
+        img.onerror = () => { thumb.classList.add('placeholder'); thumb.textContent = '📖'; };
+        thumb.appendChild(img);
+      } else {
+        thumb.textContent = '📖';
+      }
+      const title = document.createElement('div');
+      title.className = 'card-title';
+      title.textContent = s.title || 'Historia sin título';
+      card.appendChild(thumb);
+      card.appendChild(title);
+      card.addEventListener('click', () => {
+        grid.querySelectorAll('.world-card').forEach(c => c.classList.remove('selected'));
+        card.classList.add('selected');
+        selectedId = s.id;
+      });
+      grid.appendChild(card);
     });
     // Preseleccionar la historia activa
-    if (data.activeStoryId) worldSelector.value = data.activeStoryId;
     if (stories.length > 0) {
       worldSelect.classList.remove('hidden');
       enterWorldBtn.classList.remove('hidden');
@@ -1069,23 +1093,11 @@ async function loadWorlds() {
   }
 }
 
-// Al cambiar de mundo en el selector, seleccionarlo como activo
-worldSelector.addEventListener('change', async () => {
-  const storyId = worldSelector.value;
-  if (!storyId) return;
-  try {
-    await fetch('/api/story/select', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ storyId })
-    });
-  } catch (e) { /* ignorar */ }
-});
-
 // Entrar al mundo seleccionado
 enterWorldBtn.addEventListener('click', async () => {
   // Asegurar que la historia seleccionada es la activa y recargar su estado
-  const storyId = worldSelector.value;
+  const selected = document.querySelector('.world-card.selected');
+  const storyId = selected ? selected.dataset.id : null;
   if (storyId) {
     try {
       await fetch('/api/story/select', {
