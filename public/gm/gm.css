@@ -504,11 +504,81 @@ body {
 }
 
 /* ===== Responsive ===== */
+@media (max-width: 900px) {
+  .main { padding: 20px; }
+}
+
 @media (max-width: 768px) {
-  .sidebar { width: 100%; position: relative; height: auto; }
-  .main { margin-left: 0; max-width: 100%; }
   .app { flex-direction: column; }
+  .sidebar {
+    width: 100%;
+    position: relative;
+    height: auto;
+    padding: 12px 0;
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+  }
+  .brand { padding: 0 16px 12px; }
+  .brand h1 { font-size: 1rem; }
+  .brand span { font-size: 0.7rem; }
+
+  /* Navegación horizontal con scroll */
+  .nav {
+    flex-direction: row;
+    overflow-x: auto;
+    padding: 8px 12px;
+    gap: 6px;
+    -webkit-overflow-scrolling: touch;
+  }
+  .nav-btn {
+    white-space: nowrap;
+    padding: 8px 12px;
+    font-size: 0.82rem;
+  }
+  .sidebar-footer { padding: 10px 16px; }
+
+  .main { margin-left: 0; max-width: 100%; padding: 16px; }
+
   .cards-grid { grid-template-columns: 1fr; }
   .field-row { grid-template-columns: 1fr; }
   .equip-slots { grid-template-columns: 1fr; }
+
+  /* Cabeceras de sección: apilar acciones */
+  .section-header { flex-direction: column; align-items: flex-start; gap: 10px; }
+  .section-header .actions {
+    flex-wrap: wrap;
+    width: 100%;
+  }
+  .section-header .actions .btn { flex: 1 1 auto; justify-content: center; }
+
+  /* Selector de historias */
+  .story-selector select { min-width: 0; flex: 1; }
+
+  /* Modales a pantalla completa */
+  .modal-overlay { padding: 0; align-items: flex-end; }
+  .modal {
+    max-width: 100%;
+    max-height: 92vh;
+    border-radius: 12px 12px 0 0;
+  }
+  .modal-wide { max-width: 100%; }
+
+  /* Stats grid a 2 columnas en móvil */
+  .stats-grid { grid-template-columns: repeat(2, 1fr); }
+
+  /* Chat: altura adaptada a la pantalla */
+  .chat-container {
+    height: calc(100vh - 260px);
+    min-height: 320px;
+  }
+  .chat-msg { max-width: 92%; }
+
+  /* Galería de imágenes */
+  .img-grid { grid-template-columns: repeat(auto-fill, minmax(90px, 1fr)); }
+}
+
+@media (max-width: 420px) {
+  .stats-grid { grid-template-columns: repeat(2, 1fr); }
+  .img-grid { grid-template-columns: repeat(3, 1fr); }
+  .img-item.cover { grid-column: span 2; grid-row: span 2; }
 }

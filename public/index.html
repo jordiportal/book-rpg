@@ -215,6 +215,51 @@
       background: rgba(255,255,255,0.12); border-radius: 4px; padding: 1px 5px;
       font-family: inherit; font-size: 10px; color: #ffd479;
     }
+
+    /* ===== Responsive / Móvil ===== */
+    @media (max-width: 768px) {
+      /* HUD: apilar paneles y compactar */
+      #hud { flex-direction: column; gap: 8px; padding: 8px 10px; }
+      #stats-panel { min-width: 0; width: 100%; }
+      #objective-panel { margin-left: 0; max-width: 100%; }
+      #character-panel, #inventory-panel { max-width: 100% !important; width: 100%; }
+
+      /* Diálogo a pantalla (casi) completa en móvil */
+      #dialog-panel {
+        left: 8px; right: 8px; width: auto; max-width: none;
+        bottom: 8px;
+      }
+      #log { max-height: 150px; }
+
+      /* Prompt contextual más compacto */
+      #interact-prompt { bottom: 130px; padding: 6px 14px; }
+      .prompt-text { font-size: 13px; }
+
+      /* Controles info: ocultar en móvil (sin teclado) */
+      #controls-info { display: none; }
+
+      /* Selector de mundos: tarjetas más pequeñas */
+      #world-select { min-width: 0; padding: 14px; }
+      .world-card { width: 130px; }
+      .world-card .thumb { height: 90px; }
+
+      /* Intro */
+      #intro h1 { font-size: 24px; }
+      #intro h2 { font-size: 14px; }
+
+      /* Enlace GM más compacto */
+      #gm-link { top: 10px; right: 10px; padding: 6px 10px; font-size: 12px; }
+    }
+
+    @media (max-width: 420px) {
+      .world-card { width: 110px; }
+      .world-card .thumb { height: 80px; }
+      .world-card .card-title { font-size: 10.5px; min-height: 30px; }
+      #world-grid { gap: 10px; }
+      #action-input { font-size: 12px; }
+      .msg { font-size: 12px; }
+      #dialog-header span { font-size: 11px; }
+    }
   </style>
 </head>
 <body>
