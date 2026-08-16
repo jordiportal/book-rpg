@@ -147,6 +147,20 @@
       margin-top: 20px; background: linear-gradient(135deg, #ffb347, #ff8a5c); color: #1a1206;
       border: none; border-radius: 10px; padding: 14px 32px; font-size: 16px; font-weight: 700; cursor: pointer;
     }
+    #world-select {
+      display: flex; flex-direction: column; align-items: center; gap: 12px;
+      margin-bottom: 20px; padding: 20px; background: rgba(15,18,26,0.7);
+      border: 1px solid rgba(255,212,121,0.25); border-radius: 12px; min-width: 320px;
+    }
+    #world-select label { font-size: 14px; color: #ffd479; letter-spacing: 1px; }
+    #world-selector {
+      width: 100%; max-width: 380px; padding: 10px 12px; font-size: 14px;
+      background: rgba(255,255,255,0.06); color: #fff; border: 1px solid rgba(255,255,255,0.2);
+      border-radius: 8px; outline: none; cursor: pointer;
+    }
+    #world-selector:focus { border-color: #ffd479; }
+    #world-selector option { background: #1a2030; color: #fff; }
+    #enter-world-btn { margin-top: 4px; }
     .hidden { display: none !important; }
 
     /* Indicador de carga del LLM */
@@ -179,8 +193,13 @@
 
   <!-- Intro -->
   <div id="intro">
-    <h1>異世界迷宮でハーレムを</h1>
-    <h2>Harem in the Labyrinth of Another World — RPG guiado por IA</h2>
+    <h1>Book-RPG</h1>
+    <h2>RPG de mundo abierto guiado por IA</h2>
+    <div id="world-select" class="hidden">
+      <label for="world-selector">🌍 Elige tu mundo</label>
+      <select id="world-selector"></select>
+      <button id="enter-world-btn" class="hidden">⚔️ Entrar a este mundo</button>
+    </div>
     <p class="loading" id="intro-loading">Cargando el mundo...</p>
     <button id="start-btn" class="hidden">⚔️ Comenzar aventura</button>
   </div>

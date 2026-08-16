@@ -26,9 +26,9 @@ try {
   webglOK = false;
   console.warn('WebGL no disponible, modo texto:', e.message);
   container.innerHTML = '<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:radial-gradient(ellipse at center,#1a2030,#0b0e14);color:#9aa3b2;font-size:14px;text-align:center;padding:20px;">🌄 Modo texto (WebGL no disponible en este dispositivo).<br>El mundo 3D se mostrará en un navegador con aceleración gráfica.</div>';
-  // En modo texto no hay canvas: ocultar el intro automáticamente para que se pueda jugar
-  const introEl = document.getElementById('intro');
-  if (introEl) introEl.classList.add('hidden');
+  // En modo texto no hay canvas: mantener el intro visible para que el jugador
+  // pueda elegir su mundo antes de empezar (el selector de mundos está en el intro).
+  // El intro se oculta al pulsar "Entrar a este mundo" o "Comenzar aventura".
 }
 
 // Parámetros de cámara en tercera persona
@@ -1036,6 +1036,72 @@ document.getElementById('dialog-header').addEventListener('click', () => {
 });
 
 // Inicio
+const worldSelect = document.getElementById('world-select');
+const worldSelector = document.getElementById('world-selector');
+const enterWorldBtn = document.getElementById('enter-world-btn');
+
+// Cargar la lista de mundos disponibles
+async function loadWorlds() {
+  try {
+    const res = await fetch('/api/story');
+    const data = await res.json();
+    const stories = data.stories || [];
+    worldSelector.innerHTML = '';
+    stories.forEach(s => {
+      const opt = document.createElement('option');
+      opt.value = s.id;
+      opt.textContent = s.title || 'Historia sin título';
+      worldSelector.appendChild(opt);
+    });
+    // Preseleccionar la historia activa
+    if (data.activeStoryId) worldSelector.value = data.activeStoryId;
+    if (stories.length > 0) {
+      worldSelect.classList.remove('hidden');
+      enterWorldBtn.classList.remove('hidden');
+      introLoading.classList.add('hidden');
+    } else {
+      // Sin historias: mostrar el botón de comenzar (creará una por defecto)
+      introLoading.textContent = 'No hay mundos creados. Crea uno desde el panel del GM.';
+      startBtn.classList.add('hidden');
+    }
+  } catch (err) {
+    introLoading.textContent = 'Error cargando mundos: ' + err.message;
+  }
+}
+
+// Al cambiar de mundo en el selector, seleccionarlo como activo
+worldSelector.addEventListener('change', async () => {
+  const storyId = worldSelector.value;
+  if (!storyId) return;
+  try {
+    await fetch('/api/story/select', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ storyId })
+    });
+  } catch (e) { /* ignorar */ }
+});
+
+// Entrar al mundo seleccionado
+enterWorldBtn.addEventListener('click', async () => {
+  // Asegurar que la historia seleccionada es la activa y recargar su estado
+  const storyId = worldSelector.value;
+  if (storyId) {
+    try {
+      await fetch('/api/story/select', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ storyId })
+      });
+      await loadState(); // recargar el estado del mundo elegido
+    } catch (e) { /* ignorar */ }
+  }
+  introEl.classList.add('hidden');
+  addMsg('🌅 Despiertas en un establo de un mundo desconocido. Fuera, un pueblo de casas de madera se extiende bajo un cielo azul.', 'narrator');
+  addMsg('💡 Muévete con WASD. Acércate a un personaje y pulsa <b>E</b> para hablar, o a un monstruo y pulsa <b>F</b> para atacar. Haz clic en cualquier personaje para usar 鑑定.', 'system');
+  inputEl.focus();
+});
+
 startBtn.addEventListener('click', () => {
   introEl.classList.add('hidden');
   addMsg('🌅 Despiertas en un establo de un mundo desconocido. Fuera, un pueblo de casas de madera se extiende bajo un cielo azul.', 'narrator');
@@ -1047,8 +1113,7 @@ startBtn.addEventListener('click', () => {
 (async () => {
   try {
     await loadState();
-    introLoading.textContent = 'Mundo cargado. ¡Listo!';
-    startBtn.classList.remove('hidden');
+    await loadWorlds();
   } catch (err) {
     introLoading.textContent = 'Error cargando el mundo: ' + err.message;
   }
