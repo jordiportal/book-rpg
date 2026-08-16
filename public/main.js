@@ -591,10 +591,14 @@ function buildWorld() {
 buildWorld();
 
 // Inicializar personajes reales desde la API
-initCharacterSystem().then(() => {
+// Recarga personajes, equipamiento e historia de la historia ACTIVA, y
+// re-materializa los NPCs del pueblo. Se llama al arrancar y al cambiar de mundo.
+async function refreshWorldData() {
+  await initCharacterSystem(); // recarga _characters, _equipment, _story y actualiza el panel
   placeVillageCharacters(scene, villageGroup, interactables, registerInteractive);
   updateCharacterPanel();
-});
+}
+refreshWorldData();
 
 // Abre el detalle de equipamiento de un personaje (usado por el panel de compañeros)
 window.__openCharacterDetail = (character) => {
@@ -1106,6 +1110,7 @@ enterWorldBtn.addEventListener('click', async () => {
         body: JSON.stringify({ storyId })
       });
       await loadState(); // recargar el estado del mundo elegido
+      await refreshWorldData(); // recargar personajes/equipamiento/historia del mundo elegido
     } catch (e) { /* ignorar */ }
   }
   introEl.classList.add('hidden');
