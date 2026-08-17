@@ -340,6 +340,37 @@ body {
   white-space: pre-wrap;
 }
 
+/* ===== Imágenes de escena / capítulo (novela visual) ===== */
+.scene-img-block { margin-top: 12px; }
+.scene-image {
+  position: relative;
+  display: inline-block;
+  max-width: 100%;
+  margin-bottom: 8px;
+}
+.scene-image img {
+  max-width: 100%;
+  max-height: 260px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  display: block;
+}
+.scene-image .btn-rm-img {
+  position: absolute;
+  top: 6px; right: 6px;
+  padding: 2px 8px;
+  font-size: 0.8rem;
+}
+.scene-img-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.scene-img-actions .btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
 /* ===== Toast ===== */
 .toast {
   position: fixed;

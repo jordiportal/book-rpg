@@ -183,8 +183,12 @@ export function createVisualNovel() {
 
   function setBg() {
     const bg = overlay.querySelector('#vn-bg');
-    if (bgImages.length > 0) {
-      const src = bgImages[bgIdx % bgImages.length];
+    // Imagen emparejada de la escena/capítulo actual (si existe), si no las del epub
+    const ch = story.chapters[chapterIdx];
+    const scene = currentScene();
+    const sceneImg = (scene && scene.image) || (ch && ch.image) || null;
+    const src = sceneImg || (bgImages.length > 0 ? bgImages[bgIdx % bgImages.length] : null);
+    if (src) {
       bg.style.backgroundImage = `url(${src})`;
       bg.style.display = 'block';
     } else {

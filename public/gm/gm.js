@@ -594,24 +594,179 @@ async function deleteEquipment(id) {
 }
 
 // ===== CAPÍTULO (modal) =====
+// Muestra el capítulo con sus escenas. En novelas visuales (gameType === 'visual_novel')
+// cada escena/capítulo puede tener una imagen emparejada, generada con flux2
+// (creador / editor / editor múltiple) o elegida de las imágenes del epub.
 function openChapter(ch) {
   $('#modal-chapter-title').textContent = `Cap. ${ch.index}: ${ch.title}`;
   const detail = $('#chapter-detail');
-  const scenesHtml = (ch.scenes || []).map(sc => `
-    <div class="scene-card">
-      <h5>Esc. ${sc.index}: ${sc.title}</h5>
-      <p>${sc.summary || 'Sin resumen'}</p>
-      <div class="scene-content">${sc.content || ''}</div>
-    </div>
-  `).join('');
+  const isVN = story && story.gameType === 'visual_novel';
+
+  // Imagen del capítulo (si la tiene)
+  const chImgHtml = ch.image
+    ? `<div class="scene-image"><img src="${ch.image}" alt="Cap. ${ch.index}"><button class="btn btn-danger btn-rm-img" data-chapter="${ch.id}" title="Quitar imagen">✕</button></div>`
+    : '';
+
+  const scenesHtml = (ch.scenes || []).map(sc => {
+    const imgHtml = sc.image
+      ? `<div class="scene-image"><img src="${sc.image}" alt="Esc. ${sc.index}"><button class="btn btn-danger btn-rm-img" data-chapter="${ch.id}" data-scene="${sc.id}" title="Quitar imagen">✕</button></div>`
+      : '';
+    return `
+      <div class="scene-card">
+        <h5>Esc. ${sc.index}: ${sc.title}</h5>
+        <p>${sc.summary || 'Sin resumen'}</p>
+        <div class="scene-content">${sc.content || ''}</div>
+        ${isVN ? `
+          <div class="scene-img-block">
+            ${imgHtml}
+            <div class="scene-img-actions">
+              <button class="btn btn-secondary btn-gen-img" data-chapter="${ch.id}" data-scene="${sc.id}" data-label="Esc. ${sc.index}: ${sc.title}">🎨 Generar</button>
+              <button class="btn btn-secondary btn-edit-img" data-chapter="${ch.id}" data-scene="${sc.id}" data-label="Esc. ${sc.index}: ${sc.title}" ${sc.image ? '' : 'disabled'}>✏️ Editar</button>
+              <button class="btn btn-secondary btn-multi-img" data-chapter="${ch.id}" data-scene="${sc.id}" data-label="Esc. ${sc.index}: ${sc.title}">🎲 Generar 4</button>
+            </div>
+          </div>
+        ` : ''}
+      </div>
+    `;
+  }).join('');
+
   detail.innerHTML = `
     <div class="chapter-detail-header">
       <h3>${ch.title}</h3>
       <p>${ch.summary || 'Sin resumen'}</p>
+      ${isVN ? `
+        <div class="scene-img-block">
+          ${chImgHtml}
+          <div class="scene-img-actions">
+            <button class="btn btn-secondary btn-gen-img" data-chapter="${ch.id}" data-label="Cap. ${ch.index}: ${ch.title}">🎨 Generar portada</button>
+            <button class="btn btn-secondary btn-edit-img" data-chapter="${ch.id}" data-label="Cap. ${ch.index}: ${ch.title}" ${ch.image ? '' : 'disabled'}>✏️ Editar</button>
+          </div>
+        </div>
+      ` : ''}
     </div>
     <div class="scenes-list">${scenesHtml}</div>
   `;
   $('#modal-chapter').classList.add('open');
+  bindSceneImgActions(ch);
+}
+
+// Vincula los botones de imagen de las escenas/capítulo del modal abierto.
+function bindSceneImgActions(ch) {
+  // Generar (una imagen)
+  $$('.btn-gen-img').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const label = btn.dataset.label;
+      const prompt = prompt(`🎨 Prompt para generar la imagen de ${label}:\n(En blanco = usar el resumen de la escena)`, '');
+      if (prompt === null) return;
+      const finalPrompt = prompt.trim() || `${label} — ${ch.summary || ''}`.trim();
+      generateSceneImage(btn.dataset.chapter, btn.dataset.scene || null, finalPrompt, 1);
+    });
+  });
+  // Generar múltiple (4 variantes)
+  $$('.btn-multi-img').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const label = btn.dataset.label;
+      const prompt = prompt(`🎲 Prompt para generar 4 variantes de ${label}:`, '');
+      if (prompt === null) return;
+      const finalPrompt = prompt.trim() || `${label} — ${ch.summary || ''}`.trim();
+      generateSceneImage(btn.dataset.chapter, btn.dataset.scene || null, finalPrompt, 4);
+    });
+  });
+  // Editar
+  $$('.btn-edit-img').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const label = btn.dataset.label;
+      const prompt = prompt(`✏️ Prompt de edición para ${label}:`, '');
+      if (prompt === null || !prompt.trim()) return;
+      editSceneImage(btn.dataset.chapter, btn.dataset.scene || null, prompt.trim());
+    });
+  });
+  // Quitar imagen
+  $$('.btn-rm-img').forEach(btn => {
+    btn.addEventListener('click', () => {
+      removeSceneImage(btn.dataset.chapter, btn.dataset.scene || null);
+    });
+  });
+}
+
+// Genera imagen(s) con flux2 y las empareja con la escena/capítulo.
+async function generateSceneImage(chapterId, sceneId, promptText, n) {
+  if (!story) return;
+  const btn = document.querySelector(`.btn-gen-img[data-chapter="${chapterId}"]${sceneId ? `[data-scene="${sceneId}"]` : ''}`);
+  const orig = btn ? btn.textContent : '';
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Generando...'; }
+  try {
+    const data = await api('/images/generate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt: promptText, storyId: story.id, n, chapterId, sceneId })
+    });
+    story = data.story || story;
+    const urls = data.images || [];
+    if (urls.length === 1) {
+      toast('✅ Imagen generada y emparejada', 'success');
+    } else {
+      toast(`✅ ${urls.length} variantes generadas (la 1ª emparejada)`, 'success');
+    }
+    // Recargar el capítulo para mostrar la imagen
+    const ch = (story.chapters || []).find(c => c.id === chapterId);
+    if (ch) openChapter(ch);
+  } catch (err) {
+    toast('⚠️ ' + err.message, 'error');
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = orig; }
+  }
+}
+
+// Edita la imagen actual de la escena/capítulo con flux2-edit.
+async function editSceneImage(chapterId, sceneId, promptText) {
+  if (!story) return;
+  const ch = (story.chapters || []).find(c => c.id === chapterId);
+  if (!ch) return;
+  const imageUrl = sceneId
+    ? (ch.scenes || []).find(s => s.id === sceneId)?.image
+    : ch.image;
+  if (!imageUrl) { toast('No hay imagen para editar', 'error'); return; }
+  try {
+    const data = await api('/images/edit', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt: promptText, imageUrl, storyId: story.id, chapterId, sceneId })
+    });
+    story = data.story || story;
+    toast('✅ Imagen editada y emparejada', 'success');
+    const ch2 = (story.chapters || []).find(c => c.id === chapterId);
+    if (ch2) openChapter(ch2);
+  } catch (err) {
+    toast('⚠️ ' + err.message, 'error');
+  }
+}
+
+// Quita la imagen de una escena/capítulo.
+async function removeSceneImage(chapterId, sceneId) {
+  if (!story) return;
+  const ch = (story.chapters || []).find(c => c.id === chapterId);
+  if (!ch) return;
+  if (sceneId) {
+    const sc = (ch.scenes || []).find(s => s.id === sceneId);
+    if (sc) delete sc.image;
+  } else {
+    delete ch.image;
+  }
+  story.updatedAt = new Date().toISOString();
+  try {
+    const data = await api(`/story/${story.id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chapters: story.chapters })
+    });
+    story = data.story;
+    const ch2 = (story.chapters || []).find(c => c.id === chapterId);
+    if (ch2) openChapter(ch2);
+    toast('Imagen quitada', 'success');
+  } catch (err) {
+    toast(err.message, 'error');
+  }
 }
 
 function initModals() {

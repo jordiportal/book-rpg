@@ -410,6 +410,7 @@ router.put('/:id', (req, res) => {
   if (data.title !== undefined) story.title = data.title;
   if (data.language !== undefined) story.language = data.language;
   if (data.gameType !== undefined) story.gameType = data.gameType;
+  if (data.chapters !== undefined) story.chapters = data.chapters;
   story.updatedAt = now();
   saveStory(story);
   res.json({ story });
