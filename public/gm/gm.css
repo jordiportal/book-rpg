@@ -391,6 +391,40 @@ body {
 .toast.success { border-color: var(--success); color: var(--success); }
 .toast.error { border-color: var(--danger); color: var(--danger); }
 
+/* ===== Loading overlay (uploads largos) ===== */
+.loading-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  z-index: 300;
+  backdrop-filter: blur(2px);
+}
+.loading-overlay.show { display: flex; }
+.loading-box {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 32px 40px;
+  text-align: center;
+  box-shadow: var(--shadow);
+  max-width: 360px;
+}
+.loading-box p { margin: 8px 0 0; font-size: 1rem; color: var(--text); }
+.loading-box .loading-sub { font-size: 0.8rem; color: var(--text-muted); }
+.spinner {
+  width: 40px;
+  height: 40px;
+  margin: 0 auto 12px;
+  border: 4px solid var(--border);
+  border-top-color: var(--primary, #4f8cff);
+  border-radius: 50%;
+  animation: spin 0.9s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
 /* ===== Utils ===== */
 .hidden { display: none !important; }
 .muted { color: var(--text-muted); }

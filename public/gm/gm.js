@@ -213,8 +213,8 @@ async function handleStoryUpload(e) {
   if (!file) return;
   const fd = new FormData();
   fd.append('file', file);
+  showLoading(`Subiendo y parseando «${file.name}»...`, 'Esto puede tardar unos minutos en libros largos');
   try {
-    toast('Parseando historia con IA...', 'info');
     const data = await api('/story/upload', { method: 'POST', body: fd });
     story = data.story;
     renderStory();
@@ -224,8 +224,20 @@ async function handleStoryUpload(e) {
     await loadEquipment();
   } catch (err) {
     toast(err.message, 'error');
+  } finally {
+    hideLoading();
   }
   e.target.value = '';
+}
+
+function showLoading(text, sub) {
+  const ov = $('#loading-overlay');
+  if (text) $('#loading-text').textContent = text;
+  if (sub) $('#loading-sub').textContent = sub;
+  ov.classList.add('show');
+}
+function hideLoading() {
+  $('#loading-overlay').classList.remove('show');
 }
 
 async function handleReparse() {
