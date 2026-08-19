@@ -138,19 +138,44 @@ function extractEpubImages(buffer, storyId) {
   return saved;
 }
 
-// Usa el LLM para estructurar texto en capítulos y escenas
-async function llmStructureStory(fullText) {
-  const system = `Eres un asistente de estructuración literaria. Tu trabajo es dividir un texto en capítulos y escenas. Responde ÚNICAMENTE con un JSON válido y nada más.`;
-  const prompt = `Divide el siguiente texto en capítulos y escenas. Devuelve un JSON con esta estructura exacta:
+// Divide el texto en chunks de tamaño razonable para poder estructurar libros
+// largos sin que el LLM pierda contenido (el modelo solo ve una parte a la vez).
+// El LLM debe re-emitir TODO el texto en las escenas, así que el chunk debe ser
+// bastante menor que maxTokens para que el JSON completo quepa en la salida.
+function splitIntoChunks(text, maxLen = 4000) {
+  const chunks = [];
+  let remaining = text;
+  while (remaining.length > 0) {
+    if (remaining.length <= maxLen) {
+      chunks.push(remaining);
+      break;
+    }
+    // Cortar en el último salto de párrafo dentro del límite (mejor que cortar a mitad de frase)
+    let cut = remaining.lastIndexOf('\n\n', maxLen);
+    if (cut < maxLen * 0.5) cut = remaining.lastIndexOf('\n', maxLen);
+    if (cut < maxLen * 0.5) cut = maxLen;
+    chunks.push(remaining.slice(0, cut));
+    remaining = remaining.slice(cut);
+  }
+  return chunks;
+}
+
+// Estructura UN chunk de texto en capítulos y escenas (una sola llamada al LLM).
+// El LLM NO re-emite el texto (solo títulos/resúmenes); el backend reparte el
+// contenido del chunk entre las escenas. Así el JSON de salida es pequeño y
+// nunca se trunca aunque el libro sea largo.
+async function llmStructureChunk(chunkText, isFirst, fallbackTitle) {
+  const system = `Eres un asistente de estructuración literaria. Tu trabajo es dividir un fragmento de texto en capítulos y escenas. Responde ÚNICAMENTE con un JSON válido y nada más.`;
+  const prompt = `Divide el siguiente fragmento de texto en capítulos y escenas. Devuelve un JSON con esta estructura exacta:
 {
-  "title": "Título de la obra",
+  ${isFirst ? '"title": "Título de la obra",' : ''}
   "chapters": [
     {
       "index": 1,
       "title": "Título del capítulo",
       "summary": "Resumen breve del capítulo",
       "scenes": [
-        { "index": 1, "title": "Título de la escena", "summary": "Resumen breve", "content": "Texto completo de la escena" }
+        { "index": 1, "title": "Título de la escena", "summary": "Resumen breve" }
       ]
     }
   ]
@@ -158,20 +183,19 @@ async function llmStructureStory(fullText) {
 
 REGLAS:
 - Cada capítulo debe tener al menos una escena.
-- El contenido de cada escena debe ser una porción real del texto original.
-- No inventes texto que no esté en la fuente.
-- Si el texto es muy largo, divide en capítulos lógicos (por cambios de escena, saltos temporales, o números de capítulo).
+- NO incluyas el campo "content" en las escenas: el texto se asignará automáticamente después.
+- Divide en capítulos lógicos (por cambios de escena, saltos temporales, o números de capítulo).
+- Si el fragmento es una continuación de un libro, los capítulos deben continuar la numeración natural.
 - El JSON debe ser válido, sin comentarios, sin markdown.
 
-TEXTO A ESTRUCTURAR (primeros 8000 caracteres):
-${fullText.slice(0, 8000)}
-${fullText.length > 8000 ? '\n[...texto truncado para estructuración inicial...]' : ''}`;
+TEXTO A ESTRUCTURAR:
+${chunkText}`;
 
   const response = await chatLLM({
     system,
     messages: [{ role: 'user', content: prompt }],
     temperature: 0.3,
-    maxTokens: 2000
+    maxTokens: 3000
   });
 
   try {
@@ -180,21 +204,87 @@ ${fullText.length > 8000 ? '\n[...texto truncado para estructuración inicial...
     if (start === -1 || end === -1) throw new Error('No JSON found');
     return JSON.parse(response.slice(start, end + 1));
   } catch (e) {
+    // Fallback: guardar el fragmento como una escena única para no perder contenido
     return {
-      title: 'Historia sin título',
+      title: fallbackTitle,
       chapters: [{
         index: 1,
         title: 'Capítulo único',
         summary: 'Texto completo',
-        scenes: [{
-          index: 1,
-          title: 'Escena única',
-          summary: 'Texto completo',
-          content: fullText.slice(0, 5000)
-        }]
+        scenes: [{ index: 1, title: 'Escena única', summary: 'Texto completo' }]
       }]
     };
   }
+}
+
+// Reparte el texto de un chunk entre las escenas de sus capítulos.
+// Si el LLM devolvió N escenas, divide el texto en N partes aproximadamente
+// iguales y las asigna. Si no hay escenas, todo el texto va a una escena única.
+function assignChunkText(chunkText, chapters) {
+  const scenes = [];
+  for (const ch of chapters || []) {
+    for (const sc of ch.scenes || []) scenes.push(sc);
+  }
+  if (scenes.length === 0) {
+    return [{
+      id: 'esc-1-1',
+      index: 1,
+      title: 'Escena única',
+      summary: 'Texto completo',
+      content: chunkText
+    }];
+  }
+  // Dividir el texto en N partes (por saltos de párrafo cuando sea posible)
+  const parts = [];
+  const len = chunkText.length;
+  const target = Math.ceil(len / scenes.length);
+  let remaining = chunkText;
+  for (let i = 0; i < scenes.length; i++) {
+    if (i === scenes.length - 1) {
+      parts.push(remaining);
+      break;
+    }
+    let cut = remaining.lastIndexOf('\n\n', target);
+    if (cut < target * 0.5) cut = remaining.lastIndexOf('\n', target);
+    if (cut < target * 0.5) cut = target;
+    parts.push(remaining.slice(0, cut));
+    remaining = remaining.slice(cut);
+  }
+  // Asignar cada parte a su escena
+  let idx = 0;
+  return (chapters || []).map((ch, ci) => ({
+    ...ch,
+    scenes: (ch.scenes || []).map((sc, si) => {
+      const content = parts[idx] || '';
+      idx++;
+      return { ...sc, content };
+    })
+  }));
+}
+
+// Usa el LLM para estructurar texto en capítulos y escenas.
+// Divide el texto en chunks para que libros largos no se corten a media historia.
+async function llmStructureStory(fullText) {
+  const chunks = splitIntoChunks(fullText, 4000);
+  let title = null;
+  let allChapters = [];
+
+  for (let i = 0; i < chunks.length; i++) {
+    const structured = await llmStructureChunk(chunks[i], i === 0, i === 0 ? 'Historia sin título' : null);
+    if (i === 0 && structured.title) title = structured.title;
+    // Asignar el texto del chunk a las escenas de este chunk
+    const chaptersWithText = assignChunkText(chunks[i], structured.chapters || []);
+    allChapters = allChapters.concat(chaptersWithText);
+  }
+
+  // Re-numerar capítulos y escenas de forma continua tras concatenar los chunks
+  allChapters = allChapters.map((ch, ci) => ({
+    ...ch,
+    index: ci + 1,
+    scenes: (ch.scenes || []).map((sc, si) => ({ ...sc, index: si + 1 }))
+  }));
+
+  return { title: title || 'Historia sin título', chapters: allChapters };
 }
 
 // Normaliza los capítulos con IDs
