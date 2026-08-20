@@ -275,14 +275,25 @@
       font-weight: 800; font-size: 14px; border-radius: 8px 8px 8px 0;
     }
     #vn-overlay .vn-dialog-text { min-height: 70px; }
+    #vn-overlay .vn-line { display: flex; align-items: flex-start; gap: 8px; }
     #vn-overlay .vn-ja {
-      font-size: 17px; line-height: 1.6; color: #fff; font-weight: 600;
+      flex: 1; font-size: 17px; line-height: 1.6; color: #fff; font-weight: 600;
       text-shadow: 0 1px 3px rgba(0,0,0,0.7);
     }
     #vn-overlay .vn-es {
-      font-size: 14px; line-height: 1.5; color: #c8cdd6; margin-top: 6px;
+      flex: 1; font-size: 14px; line-height: 1.5; color: #c8cdd6; margin-top: 6px;
       font-style: italic;
     }
+    #vn-overlay .vn-tts-btn {
+      flex-shrink: 0; background: rgba(255,255,255,0.08); color: #ffd479;
+      border: 1px solid rgba(255,255,255,0.2); border-radius: 8px;
+      width: 30px; height: 30px; font-size: 14px; cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      transition: background 0.2s, transform 0.1s;
+    }
+    #vn-overlay .vn-tts-btn:hover { background: rgba(255,212,121,0.25); }
+    #vn-overlay .vn-tts-btn:active { transform: scale(0.92); }
+    #vn-overlay .vn-tts-btn.vn-tts-playing { background: rgba(255,212,121,0.4); border-color: #ffd479; }
     #vn-overlay .vn-dialog-actions {
       display: flex; gap: 8px; margin-top: 12px; align-items: center;
     }

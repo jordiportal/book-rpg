@@ -93,8 +93,14 @@ export function createVisualNovel() {
       <div class="vn-dialog" id="vn-dialog">
         <div class="vn-name" id="vn-name"></div>
         <div class="vn-dialog-text">
-          <div class="vn-ja" id="vn-ja"></div>
-          <div class="vn-es" id="vn-es"></div>
+          <div class="vn-line">
+            <div class="vn-ja" id="vn-ja"></div>
+            <button class="vn-tts-btn" id="vn-tts-ja" title="Escuchar original (JA)">🔊</button>
+          </div>
+          <div class="vn-line">
+            <div class="vn-es" id="vn-es"></div>
+            <button class="vn-tts-btn" id="vn-tts-es" title="Escuchar traducción (ES)">🔊</button>
+          </div>
         </div>
         <div class="vn-dialog-actions">
           <button class="vn-btn" id="vn-prev">⬅</button>
@@ -126,6 +132,8 @@ export function createVisualNovel() {
     nameEl = overlay.querySelector('#vn-name');
     jaEl = overlay.querySelector('#vn-ja');
     esEl = overlay.querySelector('#vn-es');
+    const ttsJaBtn = overlay.querySelector('#vn-tts-ja');
+    const ttsEsBtn = overlay.querySelector('#vn-tts-es');
     chapterEl = overlay.querySelector('#vn-chapter');
     saveMenuEl = overlay.querySelector('#vn-save-menu');
     loadMenuEl = overlay.querySelector('#vn-load-menu');
@@ -146,6 +154,15 @@ export function createVisualNovel() {
     overlay.querySelector('#vn-send').addEventListener('click', () => {
       const inp = overlay.querySelector('#vn-input');
       if (inp.value.trim()) sendAction(inp.value);
+    });
+    // TTS: escuchar el texto original (JA) o el traducido (ES)
+    ttsJaBtn.addEventListener('click', () => {
+      const text = cleanDialogue(jaEl.textContent || '');
+      speak(text, 'ja', ttsJaBtn);
+    });
+    ttsEsBtn.addEventListener('click', () => {
+      const text = esEl.textContent || '';
+      if (text && text !== '…') speak(text, 'es', ttsEsBtn);
     });
     overlay.querySelector('#vn-input').addEventListener('keydown', (e) => {
       if (e.key === 'Enter') {
@@ -194,6 +211,48 @@ export function createVisualNovel() {
     } else {
       bg.style.backgroundImage = '';
       bg.style.display = 'none';
+    }
+  }
+
+  // ---- TTS (fish-speech) ----
+  let currentAudio = null;
+  async function speak(text, lang, btn) {
+    if (!text || !text.trim()) return;
+    // Si ya está sonando este botón, lo detenemos
+    if (currentAudio && !currentAudio.paused) {
+      currentAudio.pause();
+      currentAudio = null;
+      btn.classList.remove('vn-tts-playing');
+      return;
+    }
+    btn.classList.add('vn-tts-playing');
+    try {
+      const res = await fetch('/api/vn/tts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text, lang })
+      });
+      const data = await res.json();
+      if (data.error) {
+        showToast('⚠️ TTS: ' + data.error);
+        return;
+      }
+      const audio = new Audio(`data:${data.contentType || 'audio/wav'};base64,${data.audio}`);
+      currentAudio = audio;
+      audio.onended = () => {
+        currentAudio = null;
+        btn.classList.remove('vn-tts-playing');
+      };
+      audio.onerror = () => {
+        currentAudio = null;
+        btn.classList.remove('vn-tts-playing');
+        showToast('⚠️ No se pudo reproducir el audio');
+      };
+      await audio.play();
+    } catch (err) {
+      console.error('Error TTS:', err);
+      btn.classList.remove('vn-tts-playing');
+      showToast('⚠️ Error de TTS');
     }
   }
 

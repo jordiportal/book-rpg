@@ -3,7 +3,7 @@
 // original y, debajo, la traducción al español como subtítulo. La traducción
 // se hace por fragmento con el LLM y se cachea en memoria para no repetir.
 import { Router } from 'express';
-import { chatLLM } from '../llm.js';
+import { chatLLM, LLM_CONFIG } from '../llm.js';
 
 const router = Router();
 
@@ -45,6 +45,46 @@ Responde ÚNICAMENTE con la traducción en español, sin comentarios, sin comill
     res.json({ translation, cached: false });
   } catch (err) {
     console.error('Error traduciendo:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/vn/tts — sintetiza voz (fish-speech) de un texto.
+// Devuelve el audio (WAV) como base64 en JSON para reproducirlo en el cliente.
+// `lang` puede ser 'ja' (original) o 'es' (traducido); por ahora ambos usan la
+// misma voz de fish-speech, pero se deja el campo para futuras voces distintas.
+router.post('/tts', async (req, res) => {
+  const { text, lang } = req.body || {};
+  if (!text || typeof text !== 'string' || !text.trim()) {
+    return res.status(400).json({ error: 'Texto vacío' });
+  }
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 60000);
+    const ttsRes = await fetch(`${LLM_CONFIG.baseUrl}/audio/speech`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${LLM_CONFIG.apiKey}`
+      },
+      body: JSON.stringify({
+        model: 'fish-speech',
+        input: text.trim(),
+        voice: 'default'
+      }),
+      signal: controller.signal
+    });
+    clearTimeout(timeout);
+    if (!ttsRes.ok) {
+      const errText = await ttsRes.text();
+      throw new Error(`TTS error ${ttsRes.status}: ${errText.slice(0, 300)}`);
+    }
+    const arrayBuffer = await ttsRes.arrayBuffer();
+    const audioBase64 = Buffer.from(arrayBuffer).toString('base64');
+    const contentType = ttsRes.headers.get('content-type') || 'audio/wav';
+    res.json({ audio: audioBase64, contentType, lang: lang || 'ja' });
+  } catch (err) {
+    console.error('Error TTS:', err.message);
     res.status(500).json({ error: err.message });
   }
 });
