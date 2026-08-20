@@ -987,6 +987,7 @@ async function loadVoices() {
     const data = await api('/voices');
     voices = data.voices || [];
     renderVoices();
+    populateStoryDefaultVoice();
   } catch (err) {
     toast(err.message, 'error');
   }
