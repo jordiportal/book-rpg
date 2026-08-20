@@ -27,6 +27,10 @@ export function createVisualNovel() {
   let autoMode = false;
   let autoTimer = null;
   let currentSpeaker = '';
+  let autoVoice = 'none'; // 'none' | 'ja' | 'es' — voz a reproducir en autoplay
+  const AUTO_VOICE_KEY = 'bookrpg_vn_autovoice';
+  let ttsJaBtn = null;
+  let ttsEsBtn = null;
 
   const SAVE_KEY = 'bookrpg_vn_saves';
 
@@ -84,6 +88,11 @@ export function createVisualNovel() {
       <div class="vn-top">
         <div class="vn-chapter" id="vn-chapter"></div>
         <div class="vn-top-btns">
+          <select class="vn-btn vn-btn-ghost vn-auto-voice" id="vn-auto-voice" title="Voz en autoplay">
+            <option value="none">🔇 Sin voz</option>
+            <option value="ja">🗣️ Voz JA</option>
+            <option value="es">🗣️ Voz ES</option>
+          </select>
           <button class="vn-btn vn-btn-ghost" id="vn-auto">⏩ Auto</button>
           <button class="vn-btn vn-btn-ghost" id="vn-save">💾 Guardar</button>
           <button class="vn-btn vn-btn-ghost" id="vn-load">📂 Cargar</button>
@@ -140,8 +149,10 @@ export function createVisualNovel() {
     nameEl = overlay.querySelector('#vn-name');
     jaEl = overlay.querySelector('#vn-ja');
     esEl = overlay.querySelector('#vn-es');
-    const ttsJaBtn = overlay.querySelector('#vn-tts-ja');
-    const ttsEsBtn = overlay.querySelector('#vn-tts-es');
+    const ttsJaBtnLocal = overlay.querySelector('#vn-tts-ja');
+    const ttsEsBtnLocal = overlay.querySelector('#vn-tts-es');
+    ttsJaBtn = ttsJaBtnLocal;
+    ttsEsBtn = ttsEsBtnLocal;
     chapterEl = overlay.querySelector('#vn-chapter');
     saveMenuEl = overlay.querySelector('#vn-save-menu');
     loadMenuEl = overlay.querySelector('#vn-load-menu');
@@ -151,6 +162,12 @@ export function createVisualNovel() {
     overlay.querySelector('#vn-next').addEventListener('click', () => advance());
     overlay.querySelector('#vn-prev').addEventListener('click', () => prev());
     overlay.querySelector('#vn-auto').addEventListener('click', toggleAuto);
+    const autoVoiceSel = overlay.querySelector('#vn-auto-voice');
+    autoVoiceSel.value = autoVoice;
+    autoVoiceSel.addEventListener('change', () => {
+      autoVoice = autoVoiceSel.value;
+      try { localStorage.setItem(AUTO_VOICE_KEY, autoVoice); } catch (e) {}
+    });
     overlay.querySelector('#vn-save').addEventListener('click', () => openMenu('save'));
     overlay.querySelector('#vn-load').addEventListener('click', () => openMenu('load'));
     overlay.querySelector('#vn-exit').addEventListener('click', () => {
@@ -310,6 +327,23 @@ export function createVisualNovel() {
     const t = await translate(cleanDialogue(para));
     esEl.textContent = t || '';
     updateNavButtons();
+    // Autoplay: reproducir la voz automáticamente al mostrar el diálogo
+    if (autoMode && autoVoice !== 'none') {
+      playAutoVoice();
+    }
+  }
+
+  // Reproduce la voz automática del diálogo actual según autoVoice ('ja' | 'es')
+  function playAutoVoice() {
+    if (!ttsJaBtn || !ttsEsBtn) return;
+    const voice = voiceForSpeaker(currentSpeaker);
+    if (autoVoice === 'ja') {
+      const text = cleanDialogue(jaEl.textContent || '');
+      if (text) speak(text, 'ja', ttsJaBtn, voice);
+    } else if (autoVoice === 'es') {
+      const text = esEl.textContent || '';
+      if (text && text !== '…') speak(text, 'es', ttsEsBtn, voice);
+    }
   }
 
   function updateNavButtons() {
@@ -357,6 +391,8 @@ export function createVisualNovel() {
     if (autoMode) {
       autoTimer = setInterval(() => {
         if (thinkingEl.style.display === 'flex') return;
+        // No avanzar mientras suene la voz automática
+        if (currentAudio && !currentAudio.paused) return;
         advance();
       }, 4000);
     } else if (autoTimer) {
@@ -478,6 +514,11 @@ export function createVisualNovel() {
     paraIdx = 0;
     bgImages = (story.images || []).slice();
     bgIdx = 0;
+    // Cargar preferencia de voz en autoplay
+    try {
+      const saved = localStorage.getItem(AUTO_VOICE_KEY);
+      if (saved === 'ja' || saved === 'es' || saved === 'none') autoVoice = saved;
+    } catch (e) {}
     // Cargar personajes de la historia activa (para usar su voz en el TTS)
     fetch('/api/characters').then(r => r.json()).then(d => {
       characters = (d.characters || []).slice();
