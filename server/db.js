@@ -155,9 +155,10 @@ function saveEntity(table, entity) {
   if (!db) throw new Error('BD no inicializada');
   const now = new Date().toISOString();
   if (table === 'story' || table === 'voices') {
+    // La tabla 'story' y 'voices' no tienen story_id (no pertenecen a una historia).
     const stmt = db.prepare(`
-      INSERT OR REPLACE INTO story (id, data_json, created_at, updated_at)
-      VALUES (?, ?, COALESCE((SELECT created_at FROM story WHERE id = ?), ?), ?)
+      INSERT OR REPLACE INTO ${table} (id, data_json, created_at, updated_at)
+      VALUES (?, ?, COALESCE((SELECT created_at FROM ${table} WHERE id = ?), ?), ?)
     `);
     stmt.run([entity.id, JSON.stringify(entity), entity.id, now, now]);
     stmt.free();

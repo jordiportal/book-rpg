@@ -72,8 +72,12 @@ router.post('/tts', async (req, res) => {
     } else {
       const v = getVoice(voice);
       if (v) {
-        voiceId = v.name || 'default';
-        sample = v.sampleBase64 || v.sampleUrl || null;
+        // El servidor de fish-speech solo soporta 'default' de momento. Aunque la
+        // voz tenga un sample (URL o base64), fish no acepta nombres de voz ni
+        // clonación con samples, así que usamos 'default' siempre. El sample solo
+        // se enviaría como reference_audio si fuera base64 (preparado para futuro).
+        voiceId = 'default';
+        sample = v.sampleBase64 || null;
       }
     }
   }
