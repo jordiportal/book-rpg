@@ -296,6 +296,11 @@
           <input type="text" id="voice-name" placeholder="Ej: Voz grave masculina" required>
         </div>
         <div class="field-group">
+          <label>Slug (identificador en Fish)</label>
+          <input type="text" id="voice-slug" placeholder="Ej: zundamon, metan (solo a-z0-9-_ )">
+          <small class="field-hint">Identificador ASCII que se usa como <code>voice</code> en el TTS. Se genera automáticamente del nombre si lo dejas vacío.</small>
+        </div>
+        <div class="field-group">
           <label>Seiyu / Actor de voz</label>
           <input type="text" id="voice-seiyu" placeholder="Ej: Rie Takahashi, Kana Hanazawa, ...">
           <small class="field-hint">Nombre del seiyu o actor de voz de referencia.</small>
@@ -308,6 +313,11 @@
         <div class="field-group">
           <label>O pega el sample en base64</label>
           <textarea id="voice-sample-b64" rows="2" placeholder="data:audio/wav;base64,..."></textarea>
+        </div>
+        <div class="field-group">
+          <label>Transcripción exacta del sample (ref_text)</label>
+          <input type="text" id="voice-ref-text" placeholder="Ej: Hola, esta es una muestra de mi voz.">
+          <small class="field-hint">Lo que dice exactamente el sample. Fish lo exige para la clonación.</small>
         </div>
         <div class="field-group">
           <label>Descripción</label>

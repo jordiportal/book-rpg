@@ -976,11 +976,19 @@ function renderVoices() {
     card.innerHTML = `
       <div class="card-header">
         <strong>🎙️ ${escapeHtml(v.name)}</strong>
-        ${sampleInfo}
+        ${v.registered
+          ? '<span class="badge badge-ok">✅ en Fish</span>'
+          : (v.sampleUrl || v.sampleBase64
+            ? '<span class="badge badge-ok">🎵 sample</span>'
+            : '<span class="badge">sin sample</span>')}
       </div>
+      ${v.slug ? `<p class="muted" style="font-size:0.8rem;">Slug: <code>${escapeHtml(v.slug)}</code></p>` : ''}
       ${v.seiyu ? `<p class="muted" style="font-size:0.85rem;">Seiyu: ${escapeHtml(v.seiyu)}</p>` : ''}
       ${v.description ? `<p class="muted" style="font-size:0.85rem;">${escapeHtml(v.description)}</p>` : ''}
       <div class="card-actions">
+        ${v.sampleUrl || v.sampleBase64 ? `
+          <button class="btn btn-sm btn-primary btn-reg-voice" data-id="${v.id}">${v.registered ? '🔄 Re-registrar' : '📤 Registrar en Fish'}</button>
+        ` : ''}
         <button class="btn btn-sm btn-ghost btn-edit-voice" data-id="${v.id}">✏️ Editar</button>
         <button class="btn btn-sm btn-danger btn-del-voice" data-id="${v.id}">🗑️</button>
       </div>
@@ -989,6 +997,7 @@ function renderVoices() {
   });
   $$('.btn-edit-voice').forEach(b => b.addEventListener('click', () => openVoiceModal(b.dataset.id)));
   $$('.btn-del-voice').forEach(b => b.addEventListener('click', () => deleteVoice(b.dataset.id)));
+  $$('.btn-reg-voice').forEach(b => b.addEventListener('click', () => registerVoice(b.dataset.id, b)));
 }
 
 function openVoiceModal(id = null) {
@@ -996,9 +1005,11 @@ function openVoiceModal(id = null) {
   $('#modal-voice-title').textContent = v ? `Editar: ${v.name}` : 'Nueva voz';
   $('#voice-id').value = v?.id || '';
   $('#voice-name').value = v?.name || '';
+  $('#voice-slug').value = v?.slug || '';
   $('#voice-seiyu').value = v?.seiyu || '';
   $('#voice-sample-url').value = v?.sampleUrl || '';
   $('#voice-sample-b64').value = v?.sampleBase64 || '';
+  $('#voice-ref-text').value = v?.refText || '';
   $('#voice-description').value = v?.description || '';
   $('#modal-voice').classList.add('open');
 }
@@ -1013,9 +1024,11 @@ async function handleSaveVoice(e) {
   const id = $('#voice-id').value;
   const payload = {
     name: $('#voice-name').value,
+    slug: $('#voice-slug').value,
     seiyu: $('#voice-seiyu').value,
     sampleUrl: $('#voice-sample-url').value,
     sampleBase64: $('#voice-sample-b64').value,
+    refText: $('#voice-ref-text').value,
     description: $('#voice-description').value
   };
   try {
@@ -1049,6 +1062,27 @@ async function deleteVoice(id) {
     await loadVoices();
   } catch (err) {
     toast(err.message, 'error');
+  }
+}
+
+async function registerVoice(id, btn) {
+  const v = voices.find(x => x.id === id);
+  if (!v) return;
+  if (!v.sampleUrl && !v.sampleBase64) {
+    toast('La voz necesita un sample para registrarse en Fish', 'error');
+    return;
+  }
+  const original = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = '⏳ Registrando...';
+  try {
+    await api(`/voices/${id}/register`, { method: 'POST' });
+    toast('Voz registrada en Fish ✔', 'success');
+    await loadVoices();
+  } catch (err) {
+    toast('Error registrando: ' + err.message, 'error');
+    btn.disabled = false;
+    btn.textContent = original;
   }
 }
 

@@ -57,27 +57,27 @@ Responde ÚNICAMENTE con la traducción en español, sin comentarios, sin comill
 // El servidor de fish-speech solo soporta 'default' de momento, así que se acepta
 // el campo (para futuras voces con sample) pero se fuerza 'default' si no es válida.
 import { getVoice } from '../db.js';
-const SUPPORTED_VOICES = new Set(['default']);
+const SUPPORTED_VOICES = new Set(['default', 'alloy', 'echo', 'fable', 'nova', 'onyx', 'shimmer', 'es-locutora']);
 router.post('/tts', async (req, res) => {
   const { text, lang, voice } = req.body || {};
   if (!text || typeof text !== 'string' || !text.trim()) {
     return res.status(400).json({ error: 'Texto vacío' });
   }
-  // Resolver la voz: si `voice` es un id de voz configurada, usar su sample si existe.
+  // Resolver la voz: si `voice` es un id de voz configurada, usar su slug de Fish
+  // (si está registrada) o el slug derivado. Si es un slug/voice directo, usarlo.
   let voiceId = 'default';
-  let sample = null;
   if (voice && typeof voice === 'string') {
     if (SUPPORTED_VOICES.has(voice)) {
       voiceId = voice;
     } else {
       const v = getVoice(voice);
       if (v) {
-        // El servidor de fish-speech solo soporta 'default' de momento. Aunque la
-        // voz tenga un sample (URL o base64), fish no acepta nombres de voz ni
-        // clonación con samples, así que usamos 'default' siempre. El sample solo
-        // se enviaría como reference_audio si fuera base64 (preparado para futuro).
-        voiceId = 'default';
-        sample = v.sampleBase64 || null;
+        // Si la voz está registrada en Fish, usar su slug (clonación real).
+        // Si no, usar el slug derivado (Fish lo crea bajo demanda si existe sample).
+        voiceId = v.fishName || v.slug || 'default';
+      } else if (/^[a-z0-9-_]+$/.test(voice)) {
+        // Un slug directo válido (p. ej. 'zundamon', 'metan')
+        voiceId = voice;
       }
     }
   }
@@ -89,11 +89,6 @@ router.post('/tts', async (req, res) => {
       input: text.trim(),
       voice: voiceId
     };
-    // Si hay sample de referencia, pasarlo (fish-speech lo usa para clonar la voz).
-    // El servidor actual lo ignora (solo 'default'), pero queda preparado.
-    if (sample) {
-      body.reference_audio = sample;
-    }
     const ttsRes = await fetch(`${LLM_CONFIG.baseUrl}/audio/speech`, {
       method: 'POST',
       headers: {
@@ -111,7 +106,7 @@ router.post('/tts', async (req, res) => {
     const arrayBuffer = await ttsRes.arrayBuffer();
     const audioBase64 = Buffer.from(arrayBuffer).toString('base64');
     const contentType = ttsRes.headers.get('content-type') || 'audio/wav';
-    res.json({ audio: audioBase64, contentType, lang: lang || 'ja', voice: voiceId, hasSample: !!sample });
+    res.json({ audio: audioBase64, contentType, lang: lang || 'ja', voice: voiceId });
   } catch (err) {
     console.error('Error TTS:', err.message);
     res.status(500).json({ error: err.message });
