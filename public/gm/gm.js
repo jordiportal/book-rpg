@@ -18,6 +18,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initStory();
   initCharacters();
   initEquipment();
+  initVoices();
   initModals();
   loadAll();
 });
@@ -31,6 +32,7 @@ function initNav() {
       $$('.section').forEach(s => s.classList.toggle('active', s.id === `section-${section}`));
       if (section === 'characters') loadCharacters();
       if (section === 'equipment') loadEquipment();
+      if (section === 'voices') loadVoices();
       if (section === 'story') loadStory();
     });
   });
@@ -38,7 +40,7 @@ function initNav() {
 
 // ===== Carga general =====
 async function loadAll() {
-  await Promise.all([loadStory(), loadCharacters(), loadEquipment()]);
+  await Promise.all([loadStory(), loadCharacters(), loadEquipment(), loadVoices()]);
 }
 
 // ===== Toast =====
@@ -369,8 +371,23 @@ function openCharacterModal(id = null) {
 
   // Poblar selects de equipamiento
   populateEquipSelects(char);
+  // Poblar selector de voces globales
+  populateVoiceSelect(char);
 
   $('#modal-character').classList.add('open');
+}
+
+function populateVoiceSelect(char) {
+  const sel = $('#char-voice');
+  const current = char?.voice || '';
+  sel.innerHTML = '<option value="">— sin voz (default) —</option>';
+  voices.forEach(v => {
+    const opt = document.createElement('option');
+    opt.value = v.id;
+    opt.textContent = v.seiyu ? `${v.name} (${v.seiyu})` : v.name;
+    if (current === v.id) opt.selected = true;
+    sel.appendChild(opt);
+  });
 }
 
 function populateEquipSelects(char) {
@@ -921,3 +938,123 @@ document.addEventListener('click', async (e) => {
     btn.textContent = '💡';
   }
 });
+
+// ===== VOCES (configuración global de TTS) =====
+let voices = [];
+function initVoices() {
+  $('#btn-new-voice').addEventListener('click', () => openVoiceModal());
+  $('#btn-cancel-voice').addEventListener('click', closeVoiceModal);
+  $('#btn-close-voice').addEventListener('click', closeVoiceModal);
+  $('#form-voice').addEventListener('submit', handleSaveVoice);
+}
+
+async function loadVoices() {
+  try {
+    const data = await api('/voices');
+    voices = data.voices || [];
+    renderVoices();
+  } catch (err) {
+    toast(err.message, 'error');
+  }
+}
+
+function renderVoices() {
+  const list = $('#voices-list');
+  const empty = $('#voices-empty');
+  list.innerHTML = '';
+  if (!voices.length) {
+    empty.classList.remove('hidden');
+    return;
+  }
+  empty.classList.add('hidden');
+  voices.forEach(v => {
+    const card = document.createElement('div');
+    card.className = 'card';
+    const sampleInfo = v.sampleUrl || v.sampleBase64
+      ? '<span class="badge badge-ok">🎵 sample</span>'
+      : '<span class="badge">sin sample</span>';
+    card.innerHTML = `
+      <div class="card-header">
+        <strong>🎙️ ${escapeHtml(v.name)}</strong>
+        ${sampleInfo}
+      </div>
+      ${v.seiyu ? `<p class="muted" style="font-size:0.85rem;">Seiyu: ${escapeHtml(v.seiyu)}</p>` : ''}
+      ${v.description ? `<p class="muted" style="font-size:0.85rem;">${escapeHtml(v.description)}</p>` : ''}
+      <div class="card-actions">
+        <button class="btn btn-sm btn-ghost btn-edit-voice" data-id="${v.id}">✏️ Editar</button>
+        <button class="btn btn-sm btn-danger btn-del-voice" data-id="${v.id}">🗑️</button>
+      </div>
+    `;
+    list.appendChild(card);
+  });
+  $$('.btn-edit-voice').forEach(b => b.addEventListener('click', () => openVoiceModal(b.dataset.id)));
+  $$('.btn-del-voice').forEach(b => b.addEventListener('click', () => deleteVoice(b.dataset.id)));
+}
+
+function openVoiceModal(id = null) {
+  const v = id ? voices.find(x => x.id === id) : null;
+  $('#modal-voice-title').textContent = v ? `Editar: ${v.name}` : 'Nueva voz';
+  $('#voice-id').value = v?.id || '';
+  $('#voice-name').value = v?.name || '';
+  $('#voice-seiyu').value = v?.seiyu || '';
+  $('#voice-sample-url').value = v?.sampleUrl || '';
+  $('#voice-sample-b64').value = v?.sampleBase64 || '';
+  $('#voice-description').value = v?.description || '';
+  $('#modal-voice').classList.add('open');
+}
+
+function closeVoiceModal() {
+  $('#modal-voice').classList.remove('open');
+  $('#form-voice').reset();
+}
+
+async function handleSaveVoice(e) {
+  e.preventDefault();
+  const id = $('#voice-id').value;
+  const payload = {
+    name: $('#voice-name').value,
+    seiyu: $('#voice-seiyu').value,
+    sampleUrl: $('#voice-sample-url').value,
+    sampleBase64: $('#voice-sample-b64').value,
+    description: $('#voice-description').value
+  };
+  try {
+    if (id) {
+      await api(`/voices/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      toast('Voz actualizada', 'success');
+    } else {
+      await api('/voices', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      toast('Voz creada', 'success');
+    }
+    closeVoiceModal();
+    await loadVoices();
+  } catch (err) {
+    toast(err.message, 'error');
+  }
+}
+
+async function deleteVoice(id) {
+  if (!confirm('¿Eliminar esta voz?')) return;
+  try {
+    await api(`/voices/${id}`, { method: 'DELETE' });
+    toast('Voz eliminada', 'success');
+    await loadVoices();
+  } catch (err) {
+    toast(err.message, 'error');
+  }
+}
+
+function escapeHtml(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+  }[c]));
+}
+

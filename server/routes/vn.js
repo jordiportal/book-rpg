@@ -53,31 +53,50 @@ Responde ÚNICAMENTE con la traducción en español, sin comentarios, sin comill
 // Devuelve el audio (WAV) como base64 en JSON para reproducirlo en el cliente.
 // `lang` puede ser 'ja' (original) o 'es' (traducido); por ahora ambos usan la
 // misma voz de fish-speech, pero se deja el campo para futuras voces distintas.
-// `voice` es la voz deseada del personaje (campo 'voice' del perfil). El servidor
-// de fish-speech solo soporta 'default' de momento, así que se acepta el campo
-// (para futuras voces) pero se fuerza 'default' si no es una voz válida.
+// `voice` es el id de una voz configurada globalmente (campo 'voice' del perfil).
+// El servidor de fish-speech solo soporta 'default' de momento, así que se acepta
+// el campo (para futuras voces con sample) pero se fuerza 'default' si no es válida.
+import { getVoice } from '../db.js';
 const SUPPORTED_VOICES = new Set(['default']);
 router.post('/tts', async (req, res) => {
   const { text, lang, voice } = req.body || {};
   if (!text || typeof text !== 'string' || !text.trim()) {
     return res.status(400).json({ error: 'Texto vacío' });
   }
-  // Normalizar la voz: solo se usan voces soportadas; si no, 'default'
-  const voiceId = (voice && SUPPORTED_VOICES.has(voice)) ? voice : 'default';
+  // Resolver la voz: si `voice` es un id de voz configurada, usar su sample si existe.
+  let voiceId = 'default';
+  let sample = null;
+  if (voice && typeof voice === 'string') {
+    if (SUPPORTED_VOICES.has(voice)) {
+      voiceId = voice;
+    } else {
+      const v = getVoice(voice);
+      if (v) {
+        voiceId = v.name || 'default';
+        sample = v.sampleBase64 || v.sampleUrl || null;
+      }
+    }
+  }
   try {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 60000);
+    const body = {
+      model: 'fish-speech',
+      input: text.trim(),
+      voice: voiceId
+    };
+    // Si hay sample de referencia, pasarlo (fish-speech lo usa para clonar la voz).
+    // El servidor actual lo ignora (solo 'default'), pero queda preparado.
+    if (sample) {
+      body.reference_audio = sample;
+    }
     const ttsRes = await fetch(`${LLM_CONFIG.baseUrl}/audio/speech`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${LLM_CONFIG.apiKey}`
       },
-      body: JSON.stringify({
-        model: 'fish-speech',
-        input: text.trim(),
-        voice: voiceId
-      }),
+      body: JSON.stringify(body),
       signal: controller.signal
     });
     clearTimeout(timeout);
@@ -88,7 +107,7 @@ router.post('/tts', async (req, res) => {
     const arrayBuffer = await ttsRes.arrayBuffer();
     const audioBase64 = Buffer.from(arrayBuffer).toString('base64');
     const contentType = ttsRes.headers.get('content-type') || 'audio/wav';
-    res.json({ audio: audioBase64, contentType, lang: lang || 'ja', voice: voiceId });
+    res.json({ audio: audioBase64, contentType, lang: lang || 'ja', voice: voiceId, hasSample: !!sample });
   } catch (err) {
     console.error('Error TTS:', err.message);
     res.status(500).json({ error: err.message });

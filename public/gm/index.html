@@ -18,6 +18,7 @@
         <button class="nav-btn active" data-section="story">📚 Historia</button>
         <button class="nav-btn" data-section="characters">👥 Personajes</button>
         <button class="nav-btn" data-section="equipment">⚔️ Equipamiento</button>
+        <button class="nav-btn" data-section="voices">🎙️ Voces</button>
         <button class="nav-btn" data-section="chat">💬 Chat GM</button>
       </nav>
       <div class="sidebar-footer">
@@ -90,6 +91,22 @@
         </div>
       </section>
 
+      <!-- ===== VOCES ===== -->
+      <section id="section-voices" class="section">
+        <header class="section-header">
+          <h2>🎙️ Voces (TTS)</h2>
+          <button class="btn btn-primary" id="btn-new-voice">➕ Nueva voz</button>
+        </header>
+        <p class="muted" style="margin-bottom:1rem;">
+          Configura voces globales con samples de seiyus. Cada personaje referencia una de estas voces en su perfil.
+          El sample de audio se usará para clonar la voz cuando el servidor de fish-speech lo soporte.
+        </p>
+        <div id="voices-list" class="cards-grid"></div>
+        <div id="voices-empty" class="empty-state hidden">
+          <p>No hay voces configuradas. Crea la primera con un sample de seiyu.</p>
+        </div>
+      </section>
+
       <!-- ===== CHAT GM ===== -->
       <section id="section-chat" class="section">
         <header class="section-header">
@@ -147,9 +164,11 @@
           </div>
         </div>
         <div class="field-group">
-          <label>Voz deseada</label>
-          <input type="text" id="char-voice" placeholder="Ej: voz grave, voz dulce, voz de niña, ronca...">
-          <small class="field-hint">Describe la voz del personaje para el TTS (fish-speech). Se usa al escuchar sus diálogos.</small>
+          <label>Voz (TTS)</label>
+          <select id="char-voice">
+            <option value="">— sin voz (default) —</option>
+          </select>
+          <small class="field-hint">Elige una voz global configurada en la pestaña 🎙️ Voces. Se usa al escuchar sus diálogos.</small>
         </div>
         <div class="field-group">
           <label>Tags (separados por coma)</label>
@@ -257,6 +276,45 @@
         </div>
         <div class="modal-footer">
           <button type="button" class="btn btn-ghost" id="btn-cancel-equipment">Cancelar</button>
+          <button type="submit" class="btn btn-primary">Guardar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ===== MODAL: Voz ===== -->
+  <div class="modal-overlay" id="modal-voice">
+    <div class="modal">
+      <header class="modal-header">
+        <h3 id="modal-voice-title">Nueva voz</h3>
+        <button class="btn-icon" id="btn-close-voice">✕</button>
+      </header>
+      <form class="modal-body" id="form-voice">
+        <input type="hidden" id="voice-id">
+        <div class="field-group">
+          <label>Nombre de la voz</label>
+          <input type="text" id="voice-name" placeholder="Ej: Voz grave masculina" required>
+        </div>
+        <div class="field-group">
+          <label>Seiyu / Actor de voz</label>
+          <input type="text" id="voice-seiyu" placeholder="Ej: Rie Takahashi, Kana Hanazawa, ...">
+          <small class="field-hint">Nombre del seiyu o actor de voz de referencia.</small>
+        </div>
+        <div class="field-group">
+          <label>URL del sample de audio</label>
+          <input type="text" id="voice-sample-url" placeholder="https://.../sample.wav">
+          <small class="field-hint">URL pública de un sample de audio (WAV/MP3) de la voz. Se usará para clonar la voz en fish-speech.</small>
+        </div>
+        <div class="field-group">
+          <label>O pega el sample en base64</label>
+          <textarea id="voice-sample-b64" rows="2" placeholder="data:audio/wav;base64,..."></textarea>
+        </div>
+        <div class="field-group">
+          <label>Descripción</label>
+          <input type="text" id="voice-description" placeholder="Ej: Voz grave y ronca, ideal para villanos">
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-ghost" id="btn-cancel-voice">Cancelar</button>
           <button type="submit" class="btn btn-primary">Guardar</button>
         </div>
       </form>

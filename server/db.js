@@ -58,6 +58,12 @@ export async function initDb() {
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS voices (
+      id TEXT PRIMARY KEY,
+      data_json TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
   `);
   // Migración: si las tablas existen sin story_id (BD antigua), añadir la columna
   try {
@@ -148,7 +154,7 @@ export function listZones(storyId) {
 function saveEntity(table, entity) {
   if (!db) throw new Error('BD no inicializada');
   const now = new Date().toISOString();
-  if (table === 'story') {
+  if (table === 'story' || table === 'voices') {
     const stmt = db.prepare(`
       INSERT OR REPLACE INTO story (id, data_json, created_at, updated_at)
       VALUES (?, ?, COALESCE((SELECT created_at FROM story WHERE id = ?), ?), ?)
@@ -232,3 +238,9 @@ export function saveStory(s) { return saveEntity('story', s); }
 export function getStory(id) { return getEntity('story', id); }
 export function listStories() { return listEntities('story'); }
 export function deleteStory(id) { return deleteEntity('story', id); }
+
+// ---- Voces (configuración global de TTS) ----
+export function saveVoice(v) { return saveEntity('voices', v); }
+export function getVoice(id) { return getEntity('voices', id); }
+export function listVoices() { return listEntities('voices'); }
+export function deleteVoice(id) { return deleteEntity('voices', id); }

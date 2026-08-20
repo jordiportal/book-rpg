@@ -15,6 +15,7 @@ import storyRouter from './routes/story.js';
 import gmRouter from './routes/gm.js';
 import vnRouter from './routes/vn.js';
 import imagesRouter from './routes/images.js';
+import voicesRouter from './routes/voices.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -372,6 +373,7 @@ app.use('/api/story', storyRouter);
 app.use('/api/gm', gmRouter);
 app.use('/api/vn', vnRouter);
 app.use('/api/images', imagesRouter);
+app.use('/api/voices', voicesRouter);
 
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`🎮 Book-RPG servidor escuchando en http://0.0.0.0:${PORT}`);
