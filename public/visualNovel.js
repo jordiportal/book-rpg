@@ -242,6 +242,34 @@ export function createVisualNovel() {
   // ---- TTS (fish-speech) ----
   let currentAudio = null;
   let characters = []; // personajes de la historia activa (para la voz)
+  let audioCache = {}; // caché de audio generado: key -> {base64, contentType}
+  function audioKey(text, lang, voice) {
+    return `${lang}|${voice || ''}|${text.slice(0, 200)}`;
+  }
+  // Obtiene el audio (con caché) sin reproducirlo. Devuelve {base64, contentType} o null.
+  async function fetchAudio(text, lang, voice) {
+    if (!text || !text.trim()) return null;
+    const key = audioKey(text, lang, voice);
+    if (audioCache[key]) return audioCache[key];
+    try {
+      const res = await fetch('/api/vn/tts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text, lang, voice: voice || '' })
+      });
+      const data = await res.json();
+      if (data.error) {
+        showToast('⚠️ TTS: ' + data.error);
+        return null;
+      }
+      const entry = { base64: data.audio, contentType: data.contentType || 'audio/wav' };
+      audioCache[key] = entry;
+      return entry;
+    } catch (err) {
+      console.error('Error TTS:', err);
+      return null;
+    }
+  }
   async function speak(text, lang, btn, voice) {
     if (!text || !text.trim()) return;
     // Si ya está sonando este botón, lo detenemos
@@ -252,33 +280,27 @@ export function createVisualNovel() {
       return;
     }
     btn.classList.add('vn-tts-playing');
+    const entry = await fetchAudio(text, lang, voice);
+    if (!entry) {
+      btn.classList.remove('vn-tts-playing');
+      return;
+    }
+    const audio = new Audio(`data:${entry.contentType};base64,${entry.base64}`);
+    currentAudio = audio;
+    audio.onended = () => {
+      currentAudio = null;
+      btn.classList.remove('vn-tts-playing');
+    };
+    audio.onerror = () => {
+      currentAudio = null;
+      btn.classList.remove('vn-tts-playing');
+      showToast('⚠️ No se pudo reproducir el audio');
+    };
     try {
-      const res = await fetch('/api/vn/tts', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text, lang, voice: voice || '' })
-      });
-      const data = await res.json();
-      if (data.error) {
-        showToast('⚠️ TTS: ' + data.error);
-        return;
-      }
-      const audio = new Audio(`data:${data.contentType || 'audio/wav'};base64,${data.audio}`);
-      currentAudio = audio;
-      audio.onended = () => {
-        currentAudio = null;
-        btn.classList.remove('vn-tts-playing');
-      };
-      audio.onerror = () => {
-        currentAudio = null;
-        btn.classList.remove('vn-tts-playing');
-        showToast('⚠️ No se pudo reproducir el audio');
-      };
       await audio.play();
     } catch (err) {
-      console.error('Error TTS:', err);
+      console.error('Error reproduciendo:', err);
       btn.classList.remove('vn-tts-playing');
-      showToast('⚠️ Error de TTS');
     }
   }
 
@@ -327,22 +349,89 @@ export function createVisualNovel() {
     const t = await translate(cleanDialogue(para));
     esEl.textContent = t || '';
     updateNavButtons();
-    // Autoplay: reproducir la voz automáticamente al mostrar el diálogo
+    // Pre-cargar la traducción/audio del siguiente diálogo (en background)
+    prefetchNext();
+    // Autoplay: reproducir la voz automáticamente y ESPERAR a que termine
     if (autoMode && autoVoice !== 'none') {
-      playAutoVoice();
+      await playAutoVoice();
     }
   }
 
-  // Reproduce la voz automática del diálogo actual según autoVoice ('ja' | 'es')
+  // Reproduce la voz automática del diálogo actual según autoVoice ('ja' | 'es').
+  // Devuelve una promesa que resuelve cuando el audio termina (o falla).
   function playAutoVoice() {
-    if (!ttsJaBtn || !ttsEsBtn) return;
-    const voice = voiceForSpeaker(currentSpeaker);
+    return new Promise((resolve) => {
+      if (!ttsJaBtn || !ttsEsBtn) return resolve();
+      const voice = voiceForSpeaker(currentSpeaker);
+      let text = '';
+      let lang = '';
+      let btn = null;
+      if (autoVoice === 'ja') {
+        text = cleanDialogue(jaEl.textContent || '');
+        lang = 'ja';
+        btn = ttsJaBtn;
+      } else if (autoVoice === 'es') {
+        text = esEl.textContent || '';
+        lang = 'es';
+        btn = ttsEsBtn;
+        if (!text || text === '…') return resolve();
+      }
+      if (!text) return resolve();
+      speakAuto(text, lang, btn, voice).then(resolve);
+    });
+  }
+
+  // Como speak pero pensado para autoplay: resuelve al terminar el audio.
+  function speakAuto(text, lang, btn, voice) {
+    return new Promise(async (resolve) => {
+      const entry = await fetchAudio(text, lang, voice);
+      if (!entry) return resolve();
+      const audio = new Audio(`data:${entry.contentType};base64,${entry.base64}`);
+      currentAudio = audio;
+      btn.classList.add('vn-tts-playing');
+      const done = () => {
+        currentAudio = null;
+        btn.classList.remove('vn-tts-playing');
+        resolve();
+      };
+      audio.onended = done;
+      audio.onerror = done;
+      try {
+        await audio.play();
+      } catch (err) {
+        done();
+      }
+    });
+  }
+
+  // Pre-carga (en background) la traducción y el audio del siguiente párrafo
+  // para que el autoplay no tenga esperas al avanzar.
+  async function prefetchNext() {
+    const paras = currentParagraphs();
+    let nextPara = null;
+    if (paraIdx < paras.length - 1) {
+      nextPara = paras[paraIdx + 1];
+    } else if (chapterIdx < story.chapters.length - 1) {
+      const nextCh = story.chapters[chapterIdx + 1];
+      const nextScenes = nextCh.scenes || [];
+      const nextScene = nextScenes.length > 0 ? nextScenes[0] : nextCh;
+      const nextText = (nextScene && (nextScene.content || nextScene.summary)) || '';
+      nextPara = splitParagraphs(nextText)[0];
+    }
+    if (!nextPara) return;
+    const nextClean = cleanDialogue(nextPara);
+    const nextSpeaker = speakerName(nextPara);
+    const voice = voiceForSpeaker(nextSpeaker);
     if (autoVoice === 'ja') {
-      const text = cleanDialogue(jaEl.textContent || '');
-      if (text) speak(text, 'ja', ttsJaBtn, voice);
+      // Pre-cargar audio JA directamente
+      fetchAudio(nextClean, 'ja', voice);
     } else if (autoVoice === 'es') {
-      const text = esEl.textContent || '';
-      if (text && text !== '…') speak(text, 'es', ttsEsBtn, voice);
+      // El audio ES depende de la traducción: esperar a que esté lista
+      const t = await translate(nextClean);
+      if (t && t !== '…') fetchAudio(t, 'es', voice);
+    } else {
+      // Sin voz: pre-cargar solo la traducción para que se muestre al instante
+      translate(nextClean);
     }
   }
 
@@ -356,7 +445,7 @@ export function createVisualNovel() {
     prev.disabled = chapterIdx === 0 && paraIdx === 0;
   }
 
-  function advance() {
+  async function advance() {
     const paras = currentParagraphs();
     if (paraIdx < paras.length - 1) {
       paraIdx++;
@@ -367,7 +456,8 @@ export function createVisualNovel() {
       showToast('🏁 Fin del libro');
       return;
     }
-    render();
+    // Espera a que render (y su voz automática) terminen
+    await render();
   }
 
   function prev() {
@@ -389,16 +479,30 @@ export function createVisualNovel() {
     btn.textContent = autoMode ? '⏸ Pausa' : '⏩ Auto';
     btn.classList.toggle('vn-active', autoMode);
     if (autoMode) {
-      autoTimer = setInterval(() => {
-        if (thinkingEl.style.display === 'flex') return;
-        // No avanzar mientras suene la voz automática
-        if (currentAudio && !currentAudio.paused) return;
-        advance();
-      }, 4000);
+      // Bucle de autoplay: avanza respetando el fin de la voz.
+      // Si hay voz configurada, espera a que termine; si no, usa un intervalo base.
+      scheduleAuto();
     } else if (autoTimer) {
-      clearInterval(autoTimer);
+      clearTimeout(autoTimer);
       autoTimer = null;
     }
+  }
+
+  // Programa el siguiente avance del autoplay.
+  // El avance (advance) ya espera a que termine la voz del diálogo actual,
+  // así que aquí solo encadenamos el siguiente paso tras completarse.
+  function scheduleAuto() {
+    if (!autoMode) return;
+    const delay = (autoVoice !== 'none') ? 600 : 4000;
+    autoTimer = setTimeout(async () => {
+      if (thinkingEl.style.display === 'flex') {
+        scheduleAuto();
+        return;
+      }
+      if (!autoMode) return;
+      await advance(); // espera a render + voz
+      scheduleAuto();
+    }, delay);
   }
 
   // ---- Guardado / Carga (slots en localStorage) ----
