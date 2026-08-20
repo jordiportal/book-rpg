@@ -340,6 +340,7 @@ router.post('/', (req, res) => {
     originalFile: null,
     language: data.language || 'es',
     gameType: data.gameType || 'open_world', // 'open_world' | 'visual_novel'
+    defaultVoice: data.defaultVoice || '', // voz por defecto para diálogos sin personaje asignado
     chapters: [],
     createdAt: now(),
     updatedAt: now()
@@ -375,6 +376,7 @@ router.post('/upload', upload.single('file'), async (req, res) => {
       originalFile: req.file.originalname,
       language: 'ja',
       gameType: 'open_world', // por defecto; el GM puede cambiarlo a 'visual_novel'
+      defaultVoice: '', // voz por defecto; el GM puede asignarla
       chapters,
       images,
       coverImage: images.length > 0 ? images[0] : null,
@@ -500,6 +502,7 @@ router.put('/:id', (req, res) => {
   if (data.title !== undefined) story.title = data.title;
   if (data.language !== undefined) story.language = data.language;
   if (data.gameType !== undefined) story.gameType = data.gameType;
+  if (data.defaultVoice !== undefined) story.defaultVoice = data.defaultVoice;
   if (data.chapters !== undefined) story.chapters = data.chapters;
   story.updatedAt = now();
   saveStory(story);

@@ -72,6 +72,24 @@ function initStory() {
   $('#story-select').addEventListener('change', handleSelectStory);
   $('#btn-delete-story').addEventListener('click', handleDeleteStory);
   $('#story-game-type').addEventListener('change', handleGameTypeChange);
+  $('#story-default-voice').addEventListener('change', handleDefaultVoiceChange);
+}
+
+async function handleDefaultVoiceChange() {
+  if (!story) return;
+  const defaultVoice = $('#story-default-voice').value;
+  try {
+    const data = await api(`/story/${story.id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ defaultVoice })
+    });
+    story = data.story;
+    toast(defaultVoice ? `Voz por defecto: ${defaultVoice}` : 'Voz por defecto: sin voz', 'success');
+  } catch (err) {
+    toast(err.message, 'error');
+    $('#story-default-voice').value = story.defaultVoice || '';
+  }
 }
 
 async function handleGameTypeChange() {
@@ -89,6 +107,7 @@ async function handleGameTypeChange() {
   } catch (err) {
     toast(err.message, 'error');
     $('#story-game-type').value = story.gameType || 'open_world';
+  populateStoryDefaultVoice();
   }
 }
 
@@ -381,6 +400,21 @@ function populateVoiceSelect(char) {
   const sel = $('#char-voice');
   const current = char?.voice || '';
   sel.innerHTML = '<option value="">— sin voz (default) —</option>';
+  voices.forEach(v => {
+    const opt = document.createElement('option');
+    opt.value = v.id;
+    opt.textContent = v.seiyu ? `${v.name} (${v.seiyu})` : v.name;
+    if (current === v.id) opt.selected = true;
+    sel.appendChild(opt);
+  });
+}
+
+// Puebla el selector de voz por defecto de la historia activa.
+function populateStoryDefaultVoice() {
+  const sel = $('#story-default-voice');
+  if (!sel) return;
+  const current = story?.defaultVoice || '';
+  sel.innerHTML = '<option value="">— sin voz (usa la del personaje) —</option>';
   voices.forEach(v => {
     const opt = document.createElement('option');
     opt.value = v.id;

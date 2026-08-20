@@ -69,10 +69,13 @@ export function createVisualNovel() {
   }
 
   // Devuelve la voz del personaje que habla (por nombre), si está definida.
+  // Si el personaje no tiene voz asignada, usa la voz por defecto de la historia.
   function voiceForSpeaker(name) {
-    if (!name) return '';
-    const ch = characters.find(c => c.name && c.name.trim() === name.trim());
-    return (ch && ch.voice) || '';
+    if (name) {
+      const ch = characters.find(c => c.name && c.name.trim() === name.trim());
+      if (ch && ch.voice) return ch.voice;
+    }
+    return (story && story.defaultVoice) || '';
   }
 
   // ---- Construcción del DOM ----
