@@ -26,6 +26,7 @@ export function createVisualNovel() {
   let translateCache = {}; // caché local de traducciones
   let autoMode = false;
   let autoTimer = null;
+  let currentSpeaker = '';
 
   const SAVE_KEY = 'bookrpg_vn_saves';
 
@@ -61,6 +62,13 @@ export function createVisualNovel() {
 
   function cleanDialogue(para) {
     return para.replace(/^「[^」]{1,20}」\s*/, '');
+  }
+
+  // Devuelve la voz del personaje que habla (por nombre), si está definida.
+  function voiceForSpeaker(name) {
+    if (!name) return '';
+    const ch = characters.find(c => c.name && c.name.trim() === name.trim());
+    return (ch && ch.voice) || '';
   }
 
   // ---- Construcción del DOM ----
@@ -158,11 +166,11 @@ export function createVisualNovel() {
     // TTS: escuchar el texto original (JA) o el traducido (ES)
     ttsJaBtn.addEventListener('click', () => {
       const text = cleanDialogue(jaEl.textContent || '');
-      speak(text, 'ja', ttsJaBtn);
+      speak(text, 'ja', ttsJaBtn, voiceForSpeaker(currentSpeaker));
     });
     ttsEsBtn.addEventListener('click', () => {
       const text = esEl.textContent || '';
-      if (text && text !== '…') speak(text, 'es', ttsEsBtn);
+      if (text && text !== '…') speak(text, 'es', ttsEsBtn, voiceForSpeaker(currentSpeaker));
     });
     overlay.querySelector('#vn-input').addEventListener('keydown', (e) => {
       if (e.key === 'Enter') {
@@ -216,7 +224,8 @@ export function createVisualNovel() {
 
   // ---- TTS (fish-speech) ----
   let currentAudio = null;
-  async function speak(text, lang, btn) {
+  let characters = []; // personajes de la historia activa (para la voz)
+  async function speak(text, lang, btn, voice) {
     if (!text || !text.trim()) return;
     // Si ya está sonando este botón, lo detenemos
     if (currentAudio && !currentAudio.paused) {
@@ -230,7 +239,7 @@ export function createVisualNovel() {
       const res = await fetch('/api/vn/tts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text, lang })
+        body: JSON.stringify({ text, lang, voice: voice || '' })
       });
       const data = await res.json();
       if (data.error) {
@@ -293,6 +302,7 @@ export function createVisualNovel() {
     overlay.querySelector('#vn-stage-title').textContent = ch.title || '';
     overlay.querySelector('#vn-progress').textContent = `${paraIdx + 1} / ${paras.length}`;
     nameEl.textContent = speakerName(para) || '';
+    currentSpeaker = speakerName(para) || '';
     jaEl.textContent = cleanDialogue(para);
     esEl.textContent = '…';
     setBg();
@@ -468,6 +478,10 @@ export function createVisualNovel() {
     paraIdx = 0;
     bgImages = (story.images || []).slice();
     bgIdx = 0;
+    // Cargar personajes de la historia activa (para usar su voz en el TTS)
+    fetch('/api/characters').then(r => r.json()).then(d => {
+      characters = (d.characters || []).slice();
+    }).catch(() => { characters = []; });
     build();
     overlay.style.display = 'flex';
     render();

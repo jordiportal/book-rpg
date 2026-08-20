@@ -53,11 +53,17 @@ Responde ÚNICAMENTE con la traducción en español, sin comentarios, sin comill
 // Devuelve el audio (WAV) como base64 en JSON para reproducirlo en el cliente.
 // `lang` puede ser 'ja' (original) o 'es' (traducido); por ahora ambos usan la
 // misma voz de fish-speech, pero se deja el campo para futuras voces distintas.
+// `voice` es la voz deseada del personaje (campo 'voice' del perfil). El servidor
+// de fish-speech solo soporta 'default' de momento, así que se acepta el campo
+// (para futuras voces) pero se fuerza 'default' si no es una voz válida.
+const SUPPORTED_VOICES = new Set(['default']);
 router.post('/tts', async (req, res) => {
-  const { text, lang } = req.body || {};
+  const { text, lang, voice } = req.body || {};
   if (!text || typeof text !== 'string' || !text.trim()) {
     return res.status(400).json({ error: 'Texto vacío' });
   }
+  // Normalizar la voz: solo se usan voces soportadas; si no, 'default'
+  const voiceId = (voice && SUPPORTED_VOICES.has(voice)) ? voice : 'default';
   try {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 60000);
@@ -70,7 +76,7 @@ router.post('/tts', async (req, res) => {
       body: JSON.stringify({
         model: 'fish-speech',
         input: text.trim(),
-        voice: 'default'
+        voice: voiceId
       }),
       signal: controller.signal
     });
@@ -82,7 +88,7 @@ router.post('/tts', async (req, res) => {
     const arrayBuffer = await ttsRes.arrayBuffer();
     const audioBase64 = Buffer.from(arrayBuffer).toString('base64');
     const contentType = ttsRes.headers.get('content-type') || 'audio/wav';
-    res.json({ audio: audioBase64, contentType, lang: lang || 'ja' });
+    res.json({ audio: audioBase64, contentType, lang: lang || 'ja', voice: voiceId });
   } catch (err) {
     console.error('Error TTS:', err.message);
     res.status(500).json({ error: err.message });

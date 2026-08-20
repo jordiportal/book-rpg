@@ -321,6 +321,7 @@ function renderCharacters() {
       </div>
       <div class="card-body">
         <p>${ch.race || ''} · ${ch.class || ''}</p>
+        ${ch.voice ? `<p class="muted" style="font-size:0.8rem;">🎙️ ${ch.voice}</p>` : ''}
         <div class="stats-mini">
           <div class="stat-mini"><b>${s.level || 1}</b>LV</div>
           <div class="stat-mini"><b>${s.hp || 0}</b>HP</div>
@@ -352,6 +353,7 @@ function openCharacterModal(id = null) {
   $('#char-race').value = char?.race || '';
   $('#char-class').value = char?.class || '';
   $('#char-description').value = char?.description || '';
+  $('#char-voice').value = char?.voice || '';
   $('#char-tags').value = (char?.tags || []).join(', ');
 
   const s = char?.stats || {};
@@ -399,6 +401,7 @@ async function handleSaveCharacter(e) {
     race: $('#char-race').value,
     class: $('#char-class').value,
     description: $('#char-description').value,
+    voice: $('#char-voice').value,
     tags: $('#char-tags').value.split(',').map(t => t.trim()).filter(Boolean),
     stats: {
       level: +$('#stat-level').value,

@@ -31,6 +31,7 @@ router.post('/', (req, res) => {
     race: data.race || '',
     class: data.class || '',
     description: data.description || '',
+    voice: data.voice || '',
     stats: data.stats || { level: 1, hp: 100, maxHp: 100, mp: 50, maxMp: 50, str: 10, vit: 10, agi: 10, dex: 10, int: 10, luck: 10 },
     equipment: { weapon: null, armor: null, accessory: null },
     model3d: { status: 'none', url: null, imageUrl: null, generatedAt: null },
@@ -54,7 +55,7 @@ router.put('/:id', (req, res) => {
   const char = getCharacter(req.params.id);
   if (!char) return res.status(404).json({ error: 'Personaje no encontrado' });
   const data = req.body || {};
-  const allowed = ['name', 'race', 'class', 'description', 'stats', 'tags'];
+  const allowed = ['name', 'race', 'class', 'description', 'voice', 'stats', 'tags'];
   for (const key of allowed) {
     if (data[key] !== undefined) char[key] = data[key];
   }
