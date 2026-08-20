@@ -459,6 +459,7 @@ body {
 .btn-sm { padding: 6px 10px; font-size: 0.8rem; }
 .btn-ghost { background: transparent; border: 1px solid var(--border); color: var(--text-muted); }
 .btn-ghost:hover { color: var(--text); border-color: var(--accent); }
+.btn-sample-playing { background: var(--success) !important; color: #fff !important; border-color: var(--success) !important; }
 
 /* ===== Galería de imágenes de la historia ===== */
 .story-images { margin: 16px 0; }

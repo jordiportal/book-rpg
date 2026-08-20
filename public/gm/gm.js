@@ -986,6 +986,7 @@ function renderVoices() {
       ${v.seiyu ? `<p class="muted" style="font-size:0.85rem;">Seiyu: ${escapeHtml(v.seiyu)}</p>` : ''}
       ${v.description ? `<p class="muted" style="font-size:0.85rem;">${escapeHtml(v.description)}</p>` : ''}
       <div class="card-actions">
+        <button class="btn btn-sm btn-ghost btn-sample-voice" data-id="${v.id}">🔊 Sample</button>
         ${v.sampleUrl || v.sampleBase64 ? `
           <button class="btn btn-sm btn-primary btn-reg-voice" data-id="${v.id}">${v.registered ? '🔄 Re-registrar' : '📤 Registrar en Fish'}</button>
         ` : ''}
@@ -998,6 +999,7 @@ function renderVoices() {
   $$('.btn-edit-voice').forEach(b => b.addEventListener('click', () => openVoiceModal(b.dataset.id)));
   $$('.btn-del-voice').forEach(b => b.addEventListener('click', () => deleteVoice(b.dataset.id)));
   $$('.btn-reg-voice').forEach(b => b.addEventListener('click', () => registerVoice(b.dataset.id, b)));
+  $$('.btn-sample-voice').forEach(b => b.addEventListener('click', () => sampleVoice(b.dataset.id, b)));
 }
 
 function openVoiceModal(id = null) {
@@ -1081,6 +1083,52 @@ async function registerVoice(id, btn) {
     await loadVoices();
   } catch (err) {
     toast('Error registrando: ' + err.message, 'error');
+    btn.disabled = false;
+    btn.textContent = original;
+  }
+}
+
+// Reproduce un sample de la voz vía TTS para validarla.
+let sampleAudio = null;
+async function sampleVoice(id, btn) {
+  const v = voices.find(x => x.id === id);
+  if (!v) return;
+  // Si ya está sonando esta voz, detenerla (toggle)
+  if (sampleAudio && !sampleAudio.paused) {
+    sampleAudio.pause();
+    sampleAudio.currentTime = 0;
+    sampleAudio = null;
+    document.querySelectorAll('.btn-sample-voice').forEach(b => b.classList.remove('btn-sample-playing'));
+    return;
+  }
+  const original = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = '⏳ Generando...';
+  try {
+    const data = await api('/vn/tts', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        text: v.refText || `Hola, esta es la voz de ${v.name}.`,
+        lang: 'es',
+        voice: v.id
+      })
+    });
+    if (!data.audio) throw new Error('No se recibió audio');
+    const audio = new Audio(`data:${data.contentType || 'audio/wav'};base64,${data.audio}`);
+    sampleAudio = audio;
+    audio.play();
+    document.querySelectorAll('.btn-sample-voice').forEach(b => b.classList.remove('btn-sample-playing'));
+    btn.classList.add('btn-sample-playing');
+    btn.textContent = '⏹ Detener';
+    btn.disabled = false;
+    audio.onended = () => {
+      btn.textContent = original;
+      btn.classList.remove('btn-sample-playing');
+      sampleAudio = null;
+    };
+  } catch (err) {
+    toast('Error sample: ' + err.message, 'error');
     btn.disabled = false;
     btn.textContent = original;
   }
