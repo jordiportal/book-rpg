@@ -11,27 +11,31 @@ const router = Router();
 const translateCache = new Map();
 const MAX_CACHE = 2000;
 
-// POST /api/vn/translate — traduce un fragmento de texto al español
+// POST /api/vn/translate — traduce un fragmento de texto al idioma elegido
+// (es = español, ca = catalán). `lang` es opcional y por defecto 'es'.
 router.post('/translate', async (req, res) => {
-  const { text } = req.body || {};
+  const { text, lang } = req.body || {};
   if (!text || typeof text !== 'string' || !text.trim()) {
     return res.status(400).json({ error: 'Texto vacío' });
   }
-  const key = text.trim().slice(0, 3000);
+  const target = lang === 'ca' ? 'ca' : 'es';
+  const key = `${target}::${text.trim().slice(0, 3000)}`;
   if (translateCache.has(key)) {
-    return res.json({ translation: translateCache.get(key), cached: true });
+    return res.json({ translation: translateCache.get(key), cached: true, lang: target });
   }
+  const langName = target === 'ca' ? 'CATALÁN' : 'ESPAÑOL';
+  const langCode = target === 'ca' ? 'ca-ES' : 'es-ES';
   try {
-    const system = `Eres un traductor profesional de japonés a ESPAÑOL para novelas visuales (eroge).
-Tu idioma de salida es SIEMPRE español (es-ES). NUNCA traduzcas al chino, inglés ni ningún otro idioma.
-Traduce el texto al español manteniendo:
+    const system = `Eres un traductor profesional de japonés a ${langName} para novelas visuales (eroge).
+Tu idioma de salida es SIEMPRE ${langName} (${langCode}). NUNCA traduzcas al chino, inglés ni ningún otro idioma.
+Traduce el texto al ${target === 'ca' ? 'catalán' : 'español'} manteniendo:
 - El tono y registro del original (coloquial, formal, narrativo).
 - Los nombres propios y onomatopeyas sin traducir (p. ej. 加賀道夫, ロクサーヌ).
-- Las marcas de diálogo (「」) como comillas españolas si ayuda a la lectura.
-Responde ÚNICAMENTE con la traducción en español, sin comentarios, sin comillas envolventes, sin markdown.`;
+- Las marcas de diálogo (「」) como comillas del idioma de destino si ayuda a la lectura.
+Responde ÚNICAMENTE con la traducción en ${target === 'ca' ? 'catalán' : 'español'}, sin comentarios, sin comillas envolventes, sin markdown.`;
     const response = await chatLLM({
       system,
-      messages: [{ role: 'user', content: `Traduce al español:\n\n${text}` }],
+      messages: [{ role: 'user', content: `Traduce al ${target === 'ca' ? 'catalán' : 'español'}:\n\n${text}` }],
       temperature: 0.3,
       maxTokens: 2000
     });
@@ -42,7 +46,7 @@ Responde ÚNICAMENTE con la traducción en español, sin comentarios, sin comill
       const firstKey = translateCache.keys().next().value;
       translateCache.delete(firstKey);
     }
-    res.json({ translation, cached: false });
+    res.json({ translation, cached: false, lang: target });
   } catch (err) {
     console.error('Error traduciendo:', err.message);
     res.status(500).json({ error: err.message });

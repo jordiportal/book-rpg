@@ -29,6 +29,8 @@ export function createVisualNovel() {
   let currentSpeaker = '';
   let autoVoice = 'none'; // 'none' | 'ja' | 'es' — voz a reproducir en autoplay
   const AUTO_VOICE_KEY = 'bookrpg_vn_autovoice';
+  let translateLang = 'es'; // 'es' | 'ca' — idioma de la traducción
+  const TRANSLATE_LANG_KEY = 'bookrpg_vn_lang';
   let ttsJaBtn = null;
   let ttsEsBtn = null;
 
@@ -91,6 +93,10 @@ export function createVisualNovel() {
       <div class="vn-top">
         <div class="vn-chapter" id="vn-chapter"></div>
         <div class="vn-top-btns">
+          <select class="vn-btn vn-btn-ghost vn-lang-select" id="vn-lang" title="Idioma de traducción">
+            <option value="es">🇪🇸 Castellano</option>
+            <option value="ca">🇦🇩 Català</option>
+          </select>
           <select class="vn-btn vn-btn-ghost vn-auto-voice" id="vn-auto-voice" title="Voz en autoplay">
             <option value="none">🔇 Sin voz</option>
             <option value="ja">🗣️ Voz JA</option>
@@ -170,6 +176,14 @@ export function createVisualNovel() {
     autoVoiceSel.addEventListener('change', () => {
       autoVoice = autoVoiceSel.value;
       try { localStorage.setItem(AUTO_VOICE_KEY, autoVoice); } catch (e) {}
+    });
+    const langSel = overlay.querySelector('#vn-lang');
+    langSel.value = translateLang;
+    langSel.addEventListener('change', () => {
+      translateLang = langSel.value;
+      try { localStorage.setItem(TRANSLATE_LANG_KEY, translateLang); } catch (e) {}
+      // Re-traducir el párrafo actual al cambiar de idioma
+      render();
     });
     overlay.querySelector('#vn-save').addEventListener('click', () => openMenu('save'));
     overlay.querySelector('#vn-load').addEventListener('click', () => openMenu('load'));
@@ -310,14 +324,14 @@ export function createVisualNovel() {
   // ---- Traducción ----
   async function translate(text) {
     if (!text || !text.trim()) return '';
-    const key = text.trim().slice(0, 3000);
+    const key = `${translateLang}::${text.trim().slice(0, 3000)}`;
     if (translateCache[key]) return translateCache[key];
     setThinking(true);
     try {
       const res = await fetch('/api/vn/translate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: key })
+        body: JSON.stringify({ text: key.slice(translateLang.length + 2), lang: translateLang })
       });
       const data = await res.json();
       const t = data.translation || '';
@@ -625,6 +639,11 @@ export function createVisualNovel() {
     try {
       const saved = localStorage.getItem(AUTO_VOICE_KEY);
       if (saved === 'ja' || saved === 'es' || saved === 'none') autoVoice = saved;
+    } catch (e) {}
+    // Cargar preferencia de idioma de traducción
+    try {
+      const savedLang = localStorage.getItem(TRANSLATE_LANG_KEY);
+      if (savedLang === 'es' || savedLang === 'ca') translateLang = savedLang;
     } catch (e) {}
     // Cargar personajes de la historia activa (para usar su voz en el TTS)
     fetch('/api/characters').then(r => r.json()).then(d => {
