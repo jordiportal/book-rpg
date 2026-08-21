@@ -56,8 +56,18 @@ async function api(path, opts = {}) {
   const url = `${API}${path}`;
   const res = await fetch(url, opts);
   if (!res.ok) {
-    const err = await res.json().catch(() => ({ error: 'Error desconocido' }));
-    throw new Error(err.error || `HTTP ${res.status}`);
+    let msg = `HTTP ${res.status}`;
+    try {
+      const err = await res.json();
+      msg = err.error || msg;
+    } catch {
+      // Si no es JSON, intentar leer el texto plano (p.ej. error de proxy/gateway)
+      try {
+        const txt = await res.text();
+        if (txt && txt.trim()) msg = txt.trim().slice(0, 300);
+      } catch { /* ignore */ }
+    }
+    throw new Error(msg);
   }
   return res.json();
 }

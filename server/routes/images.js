@@ -71,7 +71,27 @@ async function flux2Chat({ storyId, images = [], prompt }) {
   });
   if (!r.ok) {
     const errText = await r.text();
-    throw new Error(`flux2 ${r.status}: ${errText.slice(0, 400)}`);
+    // Intentar extraer un mensaje legible del error de litellm/ComfyUI
+    let msg = `flux2 ${r.status}`;
+    try {
+      const j = JSON.parse(errText);
+      const m = j?.error?.message || '';
+      // El mensaje de litellm suele ser "litellm.X: ... exception_message: '...'"
+      // (puede venir con backslashes escapados). Extraer el texto tras exception_message.
+      const idx = m.indexOf('exception_message');
+      if (idx >= 0) {
+        let rest = m.slice(idx + 'exception_message'.length);
+        // saltar "': \" o "': ' o "':" y comillas
+        rest = rest.replace(/^[^A-Za-z0-9]{0,4}/, '');
+        rest = rest.replace(/^["']/, '').replace(/^\\["']/, '');
+        // cortar en el cierre de comillas (", ' o \")
+        const end = rest.search(/["']\s*[,}\]]/);
+        msg = (end > 0 ? rest.slice(0, end) : rest).slice(0, 200);
+      } else if (m) {
+        msg = m.slice(0, 300);
+      }
+    } catch { /* no JSON */ }
+    throw new Error(msg);
   }
   const data = await r.json();
   const content = data.choices?.[0]?.message?.content;
