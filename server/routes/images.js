@@ -180,6 +180,39 @@ router.post('/portrait', async (req, res) => {
   }
 });
 
+// ── FICHA ASÍNCRONA (en segundo plano) ─────────────────────────────────
+// POST /api/images/portrait/async — encola la generación de la ficha de un
+// personaje y responde al instante con { jobId }. Pasa por la cola de jobs
+// (concurrencia 1) para no saturar la VRAM de Flux si hay escenas generándose.
+// body: { storyId, characterId, imageData (data URI), prompt? }
+router.post('/portrait/async', async (req, res) => {
+  const { storyId, characterId, imageData, prompt } = req.body || {};
+  if (!storyId || !characterId) {
+    return res.status(400).json({ error: 'Faltan storyId y characterId' });
+  }
+  if (!imageData || typeof imageData !== 'string' || !imageData.startsWith('data:image')) {
+    return res.status(400).json({ error: 'Falta imageData (data URI de la ilustración original)' });
+  }
+  const char = getCharacter(characterId);
+  if (!char) return res.status(404).json({ error: 'Personaje no encontrado' });
+
+  const defaultPrompt = `Aísla al personaje sobre un fondo liso y limpio (color sólido neutro). Retrato de cuerpo entero o medio, centrado. Sin texto, sin logos, sin marcas de agua. Mantén la identidad exacta del personaje: cara, peinado, color de pelo, ojos, ropa y accesorios.`;
+  const finalPrompt = (prompt && prompt.trim()) || defaultPrompt;
+
+  const job = createJob('portrait', { storyId, characterId }, async () => {
+    const url = await flux2Chat({ storyId, images: [imageData], prompt: finalPrompt });
+    const c = getCharacter(characterId);
+    if (c) {
+      c.portrait = url;
+      c.updatedAt = new Date().toISOString();
+      saveCharacter(c);
+    }
+    return { portrait: url, characterId };
+  });
+
+  res.json({ jobId: job.id, status: job.status });
+});
+
 // ── ESCENA ASÍNCRONA (en segundo plano) ────────────────────────────────
 // POST /api/images/scene/async — encola la generación de una escena y responde
 // al instante con { jobId }. El frontend hace polling de GET /api/images/jobs/:id.

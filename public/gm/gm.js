@@ -342,11 +342,14 @@ async function handleGenPortrait() {
   const orig = btn.textContent;
   btn.disabled = true; btn.textContent = '⏳ Generando ficha...';
   try {
-    const data = await api('/images/portrait', {
+    // Flujo asíncrono: encola el job y hace polling (no bloquea la UI y evita
+    // saturar la VRAM de Flux si hay escenas generándose en paralelo).
+    const { jobId } = await api('/images/portrait/async', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ storyId: story.id, characterId: id, imageData: origImageData })
     });
+    const data = await pollJob(jobId);
     const img = $('#char-portrait-preview');
     img.src = data.portrait;
     img.classList.remove('hidden');
