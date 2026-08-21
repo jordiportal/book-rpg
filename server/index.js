@@ -23,7 +23,8 @@ const PORT = process.env.PORT || 4200;
 const SAVE_DIR = join(__dirname, 'saves');
 const SAVE_FILE = join(__dirname, 'savegame.json');
 
-app.use(express.json());
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
 // Logging de peticiones API para diagnóstico
 app.use((req, res, next) => {

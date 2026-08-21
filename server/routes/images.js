@@ -67,7 +67,8 @@ async function flux2Chat({ storyId, images = [], prompt }) {
       'Content-Type': 'application/json',
       'Authorization': `Bearer ${LLM_CONFIG.apiKey}`
     },
-    body: JSON.stringify(body)
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(600000) // 10 min: Flux 2 con imagen de referencia puede tardar >5 min
   });
   if (!r.ok) {
     const errText = await r.text();
@@ -248,7 +249,8 @@ router.post('/generate', async (req, res) => {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${LLM_CONFIG.apiKey}`
       },
-      body: JSON.stringify(body)
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(600000)
     });
     if (!r.ok) {
       const errText = await r.text();
