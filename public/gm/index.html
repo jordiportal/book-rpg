@@ -178,6 +178,27 @@
           <small class="field-hint">Elige una voz global configurada en la pestaña 🎙️ Voces. Se usa al escuchar sus diálogos.</small>
         </div>
         <div class="field-group">
+          <label>Ilustración original</label>
+          <div class="portrait-block">
+            <div class="portrait-previews">
+              <div class="portrait-box">
+                <img id="char-orig-preview" class="hidden" alt="Ilustración original">
+                <span id="char-orig-empty" class="portrait-empty">Sin ilustración</span>
+              </div>
+              <div class="portrait-box">
+                <img id="char-portrait-preview" class="hidden" alt="Ficha generada">
+                <span id="char-portrait-empty" class="portrait-empty">Ficha no generada</span>
+              </div>
+            </div>
+            <div class="portrait-actions">
+              <input type="file" id="char-orig-file" accept="image/*" hidden>
+              <button type="button" class="btn btn-secondary" id="btn-upload-orig">📤 Subir ilustración</button>
+              <button type="button" class="btn btn-primary" id="btn-gen-portrait">🎨 Generar ficha</button>
+            </div>
+            <small class="field-hint">Sube una ilustración original del personaje y genera su ficha (fondo liso, sin texto). La ficha se usará como referencia en las escenas.</small>
+          </div>
+        </div>
+        <div class="field-group">
           <label>Tags (separados por coma)</label>
           <input type="text" id="char-tags" placeholder="companion, main, villain">
         </div>

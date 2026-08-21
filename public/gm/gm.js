@@ -302,6 +302,54 @@ function initCharacters() {
   $('#form-character').addEventListener('submit', handleSaveCharacter);
   $('#btn-cancel-character').addEventListener('click', closeCharacterModal);
   $('#btn-close-character').addEventListener('click', closeCharacterModal);
+  $('#btn-upload-orig').addEventListener('click', () => $('#char-orig-file').click());
+  $('#char-orig-file').addEventListener('change', handleOrigFile);
+  $('#btn-gen-portrait').addEventListener('click', handleGenPortrait);
+}
+
+// Variable temporal con la ilustración original subida (data URI) en el modal abierto.
+let origImageData = null;
+
+function handleOrigFile(e) {
+  const file = e.target.files?.[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    origImageData = reader.result;
+    const img = $('#char-orig-preview');
+    img.src = origImageData;
+    img.classList.remove('hidden');
+    $('#char-orig-empty').classList.add('hidden');
+  };
+  reader.readAsDataURL(file);
+}
+
+async function handleGenPortrait() {
+  const id = $('#char-id').value;
+  if (!id) { toast('Guarda primero el personaje', 'error'); return; }
+  if (!origImageData) { toast('Sube primero una ilustración original', 'error'); return; }
+  const btn = $('#btn-gen-portrait');
+  const orig = btn.textContent;
+  btn.disabled = true; btn.textContent = '⏳ Generando ficha...';
+  try {
+    const data = await api('/images/portrait', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ storyId: story.id, characterId: id, imageData: origImageData })
+    });
+    const img = $('#char-portrait-preview');
+    img.src = data.portrait;
+    img.classList.remove('hidden');
+    $('#char-portrait-empty').classList.add('hidden');
+    // Actualizar el personaje en memoria
+    const ch = characters.find(c => c.id === id);
+    if (ch) ch.portrait = data.portrait;
+    toast('✅ Ficha generada', 'success');
+  } catch (err) {
+    toast('⚠️ ' + err.message, 'error');
+  } finally {
+    btn.disabled = false; btn.textContent = orig;
+  }
 }
 
 async function loadCharacters() {
@@ -333,6 +381,9 @@ function renderCharacters() {
     const card = document.createElement('div');
     card.className = 'card';
     const tagsHtml = (ch.tags || []).map(t => `<span class="tag">${t}</span>`).join('');
+    const portraitHtml = ch.portrait
+      ? `<div class="char-portrait"><img src="${ch.portrait}" alt="${ch.name}"></div>`
+      : '';
     card.innerHTML = `
       <div class="card-header">
         <div>
@@ -341,6 +392,7 @@ function renderCharacters() {
         </div>
       </div>
       <div class="card-body">
+        ${portraitHtml}
         <p>${ch.race || ''} · ${ch.class || ''}</p>
         ${ch.voice ? `<p class="muted" style="font-size:0.8rem;">🎙️ ${ch.voice}</p>` : ''}
         <div class="stats-mini">
@@ -392,6 +444,24 @@ function openCharacterModal(id = null) {
   populateEquipSelects(char);
   // Poblar selector de voces globales
   populateVoiceSelect(char);
+
+  // Mostrar ficha existente (si la tiene) y resetear ilustración temporal
+  origImageData = null;
+  $('#char-orig-file').value = '';
+  const origImg = $('#char-orig-preview');
+  origImg.classList.add('hidden');
+  origImg.removeAttribute('src');
+  $('#char-orig-empty').classList.remove('hidden');
+  const portImg = $('#char-portrait-preview');
+  if (char?.portrait) {
+    portImg.src = char.portrait;
+    portImg.classList.remove('hidden');
+    $('#char-portrait-empty').classList.add('hidden');
+  } else {
+    portImg.classList.add('hidden');
+    portImg.removeAttribute('src');
+    $('#char-portrait-empty').classList.remove('hidden');
+  }
 
   $('#modal-character').classList.add('open');
 }
@@ -677,6 +747,16 @@ function openChapter(ch) {
     const imgHtml = sc.image
       ? `<div class="scene-image"><img src="${sc.image}" alt="Esc. ${sc.index}"><button class="btn btn-danger btn-rm-img" data-chapter="${ch.id}" data-scene="${sc.id}" title="Quitar imagen">✕</button></div>`
       : '';
+    // Selector de personaje para usar su ficha como referencia en la escena
+    const charOptions = characters
+      .filter(c => c.portrait)
+      .map(c => `<option value="${c.id}">${c.name}</option>`)
+      .join('');
+    const charSelect = charOptions
+      ? `<select class="scene-char-ref" data-chapter="${ch.id}" data-scene="${sc.id}">
+           <option value="">— sin personaje —</option>${charOptions}
+         </select>`
+      : '';
     return `
       <div class="scene-card">
         <h5>Esc. ${sc.index}: ${sc.title}</h5>
@@ -686,6 +766,7 @@ function openChapter(ch) {
           <div class="scene-img-block">
             ${imgHtml}
             <div class="scene-img-actions">
+              ${charSelect ? `<div class="scene-ref-row"><span>Referencia:</span>${charSelect}</div>` : ''}
               <button class="btn btn-secondary btn-gen-img" data-chapter="${ch.id}" data-scene="${sc.id}" data-label="Esc. ${sc.index}: ${sc.title}">🎨 Generar</button>
               <button class="btn btn-secondary btn-edit-img" data-chapter="${ch.id}" data-scene="${sc.id}" data-label="Esc. ${sc.index}: ${sc.title}" ${sc.image ? '' : 'disabled'}>✏️ Editar</button>
               <button class="btn btn-secondary btn-multi-img" data-chapter="${ch.id}" data-scene="${sc.id}" data-label="Esc. ${sc.index}: ${sc.title}">🎲 Generar 4</button>
@@ -756,23 +837,42 @@ function bindSceneImgActions(ch) {
 }
 
 // Genera imagen(s) con flux2 y las empareja con la escena/capítulo.
+// Si hay un personaje con ficha seleccionado como referencia, usa el flujo
+// multi-referencia de Flux 2 (POST /api/images/scene).
 async function generateSceneImage(chapterId, sceneId, promptText, n) {
   if (!story) return;
   const btn = document.querySelector(`.btn-gen-img[data-chapter="${chapterId}"]${sceneId ? `[data-scene="${sceneId}"]` : ''}`);
   const orig = btn ? btn.textContent : '';
   if (btn) { btn.disabled = true; btn.textContent = '⏳ Generando...'; }
   try {
-    const data = await api('/images/generate', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ prompt: promptText, storyId: story.id, n, chapterId, sceneId })
-    });
-    story = data.story || story;
-    const urls = data.images || [];
-    if (urls.length === 1) {
-      toast('✅ Imagen generada y emparejada', 'success');
+    // Personaje de referencia seleccionado para esta escena
+    const refSel = document.querySelector(`.scene-char-ref[data-chapter="${chapterId}"]${sceneId ? `[data-scene="${sceneId}"]` : ''}`);
+    const characterId = refSel ? refSel.value : '';
+
+    let data;
+    if (characterId && n === 1) {
+      // Flujo multi-referencia con la ficha del personaje
+      data = await api('/images/scene', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ storyId: story.id, characterId, chapterId, sceneId, prompt: promptText })
+      });
+      story = data.story || story;
+      toast('✅ Escena generada con la ficha del personaje', 'success');
     } else {
-      toast(`✅ ${urls.length} variantes generadas (la 1ª emparejada)`, 'success');
+      // T2I puro (sin referencia) o variantes múltiples
+      data = await api('/images/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt: promptText, storyId: story.id, n, chapterId, sceneId })
+      });
+      story = data.story || story;
+      const urls = data.images || [];
+      if (urls.length === 1) {
+        toast('✅ Imagen generada y emparejada', 'success');
+      } else {
+        toast(`✅ ${urls.length} variantes generadas (la 1ª emparejada)`, 'success');
+      }
     }
     // Recargar el capítulo para mostrar la imagen
     const ch = (story.chapters || []).find(c => c.id === chapterId);

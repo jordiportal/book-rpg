@@ -316,6 +316,34 @@ body {
   font-size: 0.85rem;
 }
 
+/* ===== Portrait (ficha de personaje) ===== */
+.portrait-block { display: flex; flex-direction: column; gap: 10px; }
+.portrait-previews { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.portrait-box {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  min-height: 120px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  position: relative;
+}
+.portrait-box img { max-width: 100%; max-height: 180px; object-fit: contain; }
+.portrait-empty { color: var(--text-muted); font-size: 0.8rem; text-align: center; padding: 8px; }
+.portrait-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.portrait-actions .btn { flex: 1; min-width: 120px; }
+
+.char-portrait { margin-bottom: 8px; }
+.char-portrait img {
+  width: 100%;
+  max-height: 160px;
+  object-fit: cover;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+}
+
 /* ===== Chapter detail ===== */
 .chapter-detail-header { margin-bottom: 16px; }
 .chapter-detail-header h3 { font-size: 1.2rem; margin-bottom: 4px; }
@@ -365,10 +393,27 @@ body {
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
+  align-items: center;
 }
 .scene-img-actions .btn:disabled {
   opacity: 0.4;
   cursor: not-allowed;
+}
+.scene-ref-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+.scene-ref-row select {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 5px;
+  color: var(--text);
+  font-size: 0.8rem;
+  max-width: 180px;
 }
 
 /* ===== Toast ===== */
