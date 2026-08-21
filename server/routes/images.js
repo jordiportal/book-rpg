@@ -23,6 +23,7 @@ import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { LLM_CONFIG } from '../llm.js';
 import { getStory, saveStory, getCharacter, saveCharacter } from '../db.js';
+import { createJob, getJob } from '../jobs.js';
 
 const router = Router();
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -177,6 +178,67 @@ router.post('/portrait', async (req, res) => {
     console.error('Error generando ficha:', err.message);
     res.status(500).json({ error: err.message });
   }
+});
+
+// ── ESCENA ASÍNCRONA (en segundo plano) ────────────────────────────────
+// POST /api/images/scene/async — encola la generación de una escena y responde
+// al instante con { jobId }. El frontend hace polling de GET /api/images/jobs/:id.
+// La generación usa la ficha del personaje como referencia (multi-referencia).
+// body: { storyId, characterId?, chapterId?, sceneId?, prompt?, references? }
+router.post('/scene/async', async (req, res) => {
+  const { storyId, characterId, chapterId, sceneId, prompt, references } = req.body || {};
+  if (!storyId) return res.status(400).json({ error: 'Falta storyId' });
+  if (!prompt || typeof prompt !== 'string' || !prompt.trim()) {
+    return res.status(400).json({ error: 'Falta el prompt' });
+  }
+
+  // Resolver las referencias ahora (ficha del personaje + referencias extra),
+  // para que el job no dependa de que el personaje exista cuando se ejecute.
+  const refs = [];
+  if (characterId) {
+    const char = getCharacter(characterId);
+    if (char && char.portrait) {
+      const uri = urlToDataUri(char.portrait);
+      if (uri) refs.push(uri);
+    }
+  }
+  if (Array.isArray(references)) {
+    for (const r of references) {
+      if (typeof r === 'string' && r.startsWith('data:image')) refs.push(r);
+      else if (typeof r === 'string' && r.startsWith('/stories/')) {
+        const uri = urlToDataUri(r);
+        if (uri) refs.push(uri);
+      }
+    }
+  }
+
+  const job = createJob('scene', { storyId, characterId, chapterId, sceneId, prompt: prompt.trim(), refs }, async () => {
+    const url = await flux2Chat({ storyId, images: refs, prompt: prompt.trim() });
+    let story = null;
+    if (chapterId) {
+      story = attachImage(storyId, url, { chapterId, sceneId });
+    }
+    return { image: url, story, references: refs.length };
+  });
+
+  res.json({ jobId: job.id, status: job.status });
+});
+
+// GET /api/images/jobs/:id — estado de un job asíncrono.
+// Devuelve { id, status, result?, error? }.
+router.get('/jobs/:id', (req, res) => {
+  const job = getJob(req.params.id);
+  if (!job) return res.status(404).json({ error: 'Job no encontrado' });
+  res.json({
+    id: job.id,
+    type: job.type,
+    status: job.status,
+    result: job.result,
+    error: job.error,
+    createdAt: job.createdAt,
+    startedAt: job.startedAt,
+    finishedAt: job.finishedAt
+  });
 });
 
 // ── ESCENA (multi-referencia) ────────────────────────────────────────────

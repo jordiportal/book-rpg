@@ -797,6 +797,7 @@ function openChapter(ch) {
           <div class="scene-img-actions">
             <button class="btn btn-secondary btn-gen-img" data-chapter="${ch.id}" data-label="Cap. ${ch.index}: ${ch.title}">🎨 Generar portada</button>
             <button class="btn btn-secondary btn-edit-img" data-chapter="${ch.id}" data-label="Cap. ${ch.index}: ${ch.title}" ${ch.image ? '' : 'disabled'}>✏️ Editar</button>
+            <button class="btn btn-secondary btn-gen-all" data-chapter="${ch.id}">⚡ Generar todas las escenas</button>
           </div>
         </div>
       ` : ''}
@@ -809,6 +810,12 @@ function openChapter(ch) {
 
 // Vincula los botones de imagen de las escenas/capítulo del modal abierto.
 function bindSceneImgActions(ch) {
+  // Generar todas las escenas del capítulo (en segundo plano)
+  $$('.btn-gen-all').forEach(btn => {
+    btn.addEventListener('click', () => {
+      generateAllScenes(btn.dataset.chapter);
+    });
+  });
   // Generar (una imagen)
   $$('.btn-gen-img').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -846,6 +853,19 @@ function bindSceneImgActions(ch) {
   });
 }
 
+// Hace polling del estado de un job asíncrono hasta que termina (done/error).
+// Devuelve job.result si terminó bien; lanza Error si falló.
+async function pollJob(jobId, intervalMs = 4000, maxWaitMs = 900000) {
+  const start = Date.now();
+  while (true) {
+    const job = await api(`/images/jobs/${jobId}`);
+    if (job.status === 'done') return job.result;
+    if (job.status === 'error') throw new Error(job.error || 'Error generando la imagen');
+    if (Date.now() - start > maxWaitMs) throw new Error('Tiempo de espera agotado (15 min)');
+    await new Promise(r => setTimeout(r, intervalMs));
+  }
+}
+
 // Genera imagen(s) con flux2 y las empareja con la escena/capítulo.
 // Si hay un personaje con ficha seleccionado como referencia, usa el flujo
 // multi-referencia de Flux 2 (POST /api/images/scene).
@@ -861,12 +881,15 @@ async function generateSceneImage(chapterId, sceneId, promptText, n) {
 
     let data;
     if (characterId && n === 1) {
-      // Flujo multi-referencia con la ficha del personaje
-      data = await api('/images/scene', {
+      // Flujo multi-referencia ASÍNCRONO con la ficha del personaje:
+      // se encola el job y se hace polling hasta que termina.
+      const job = await api('/images/scene/async', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ storyId: story.id, characterId, chapterId, sceneId, prompt: promptText })
       });
+      toast('🖼️ Generando escena en segundo plano...', 'info');
+      data = await pollJob(job.jobId);
       story = data.story || story;
       toast('✅ Escena generada con la ficha del personaje', 'success');
     } else {
@@ -889,6 +912,59 @@ async function generateSceneImage(chapterId, sceneId, promptText, n) {
     if (ch) openChapter(ch);
   } catch (err) {
     toast('⚠️ ' + err.message, 'error');
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = orig; }
+  }
+}
+
+// Encola la generación de TODAS las escenas de un capítulo en segundo plano,
+// usando la ficha del personaje seleccionado como referencia (si hay).
+// Se encolan secuencialmente (cola de jobs) para no saturar la GPU.
+async function generateAllScenes(chapterId) {
+  if (!story) return;
+  const ch = (story.chapters || []).find(c => c.id === chapterId);
+  if (!ch || !ch.scenes || ch.scenes.length === 0) {
+    toast('Este capítulo no tiene escenas', 'error');
+    return;
+  }
+  const btn = document.querySelector(`.btn-gen-all[data-chapter="${chapterId}"]`);
+  const orig = btn ? btn.textContent : '';
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Generando...'; }
+
+  const pending = ch.scenes.filter(s => !s.image);
+  if (pending.length === 0) {
+    toast('Todas las escenas ya tienen imagen', 'info');
+    if (btn) { btn.disabled = false; btn.textContent = orig; }
+    return;
+  }
+
+  toast(`⚡ Encolando ${pending.length} escenas en segundo plano...`, 'info');
+  let ok = 0, fail = 0;
+  try {
+    for (const sc of pending) {
+      // Personaje de referencia para esta escena (si el usuario lo seleccionó)
+      const refSel = document.querySelector(`.scene-char-ref[data-chapter="${chapterId}"][data-scene="${sc.id}"]`);
+      const characterId = refSel ? refSel.value : '';
+      const promptText = `Ilustración de la escena: ${sc.title}. ${sc.summary || ''} ${sc.content || ''}`.trim();
+      try {
+        const job = await api('/images/scene/async', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ storyId: story.id, characterId, chapterId, sceneId: sc.id, prompt: promptText })
+        });
+        const result = await pollJob(job.jobId);
+        story = result.story || story;
+        ok++;
+        toast(`✅ Escena "${sc.title}" generada (${ok}/${pending.length})`, 'success');
+      } catch (e) {
+        fail++;
+        console.error('Error generando escena', sc.id, e);
+        toast(`⚠️ Escena "${sc.title}": ${e.message}`, 'error');
+      }
+    }
+    toast(`🏁 Generación de escenas: ${ok} ok, ${fail} error`, ok > 0 ? 'success' : 'error');
+    const ch2 = (story.chapters || []).find(c => c.id === chapterId);
+    if (ch2) openChapter(ch2);
   } finally {
     if (btn) { btn.disabled = false; btn.textContent = orig; }
   }
