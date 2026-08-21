@@ -45,7 +45,7 @@ function saveB64(storyId, b64) {
 // ── Helper: llamada a Flux 2 vía chat/completions ────────────────────────
 // images: array de data URIs (referencias). prompt: texto. Devuelve la URL
 // servible de la imagen generada (guardada en disco).
-async function flux2Chat({ storyId, images = [], prompt }) {
+export async function flux2Chat({ storyId, images = [], prompt }) {
   // Construye los mensajes: un mensaje de sistema + un mensaje de usuario con
   // el prompt y las imágenes de referencia (content multimodal).
   const userContent = [
@@ -120,7 +120,7 @@ async function flux2Chat({ storyId, images = [], prompt }) {
 }
 
 // Convierte una URL servida por /stories/... a data URI (para usarla como referencia).
-function urlToDataUri(imageUrl) {
+export function urlToDataUri(imageUrl) {
   const rel = imageUrl.replace(/^\/stories\//, '');
   const filePath = join(STORIES_IMG_DIR, rel);
   if (!existsSync(filePath)) return null;
@@ -129,7 +129,7 @@ function urlToDataUri(imageUrl) {
 }
 
 // Empareja una URL de imagen con una escena o capítulo de la historia.
-function attachImage(storyId, url, { chapterId, sceneId }) {
+export function attachImage(storyId, url, { chapterId, sceneId }) {
   const story = getStory(storyId);
   if (!story) return null;
   const ch = (story.chapters || []).find(c => c.id === chapterId);

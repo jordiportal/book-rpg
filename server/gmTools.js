@@ -9,6 +9,8 @@ import {
 } from './db.js';
 import { getActiveStoryId, setActiveStoryId } from './session.js';
 import { generateCharacters, generateEquipment, storyToText } from './entityGenerator.js';
+import { flux2Chat, attachImage, urlToDataUri } from './routes/images.js';
+import { createJob, getJob } from './jobs.js';
 
 function makeId(prefix) {
   return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
@@ -299,6 +301,60 @@ async function opGenerateEntities(args) {
     itemsSaved++;
   }
   return { charsSaved, itemsSaved, characters: newChars, equipment: newItems };
+}
+
+// ---- Operaciones de generación de imágenes de escenas ----
+// Encola la generación de una escena con Flux 2 (multi-referencia desde la ficha
+// del personaje). Devuelve { jobId } para hacer polling con get_job_status.
+async function opGenerateScene(args) {
+  const story = resolveStory(args.storyId);
+  if (!story) return { error: 'No hay historia activa' };
+
+  const prompt = (args.prompt || '').trim();
+  if (!prompt) return { error: 'Falta el prompt de la escena' };
+
+  // Referencias: ficha del personaje + referencias extra (localización)
+  const refs = [];
+  if (args.characterId) {
+    const char = getCharacter(args.characterId);
+    if (char && char.portrait) {
+      const uri = urlToDataUri(char.portrait);
+      if (uri) refs.push(uri);
+    }
+  }
+  if (Array.isArray(args.references)) {
+    for (const r of args.references) {
+      if (typeof r === 'string' && r.startsWith('data:image')) refs.push(r);
+      else if (typeof r === 'string' && r.startsWith('/stories/')) {
+        const uri = urlToDataUri(r);
+        if (uri) refs.push(uri);
+      }
+    }
+  }
+
+  const job = createJob('scene', { storyId: story.id, characterId: args.characterId, chapterId: args.chapterId, sceneId: args.sceneId, prompt }, async () => {
+    const url = await flux2Chat({ storyId: story.id, images: refs, prompt });
+    let resultStory = null;
+    if (args.chapterId) {
+      resultStory = attachImage(story.id, url, { chapterId: args.chapterId, sceneId: args.sceneId });
+    }
+    return { image: url, story: resultStory, references: refs.length };
+  });
+
+  return { jobId: job.id, status: job.status, note: 'Generación en segundo plano. Consulta con get_job_status.' };
+}
+
+function opGetJobStatus(args) {
+  if (!args.jobId) return { error: 'Falta jobId' };
+  const job = getJob(args.jobId);
+  if (!job) return { error: `Job ${args.jobId} no encontrado` };
+  return {
+    jobId: job.id,
+    type: job.type,
+    status: job.status,
+    result: job.result,
+    error: job.error
+  };
 }
 
 // ---- Registro de tools: nombre -> { schema, handler } ----
@@ -594,6 +650,37 @@ export const GM_TOOLS = [
       required: []
     },
     handler: opGenerateEntities
+  },
+  {
+    name: 'generate_scene',
+    description: 'Genera la imagen de una escena con IA (Flux 2) usando la ficha del personaje como referencia. Encola el trabajo en segundo plano y devuelve un jobId; consulta el resultado con get_job_status. La imagen se guarda en la escena/capítulo indicado.',
+    parameters: {
+      type: 'object',
+      properties: {
+        storyId: { type: 'string', description: 'Opcional. Si se omite, usa la activa' },
+        characterId: { type: 'string', description: 'ID del personaje cuya ficha (portrait) se usa como referencia' },
+        chapterId: { type: 'string', description: 'ID del capítulo donde guardar la imagen' },
+        sceneId: { type: 'string', description: 'ID de la escena donde guardar la imagen (opcional)' },
+        prompt: { type: 'string', description: 'Descripción detallada de la escena a generar' },
+        references: {
+          type: 'array',
+          description: 'Referencias extra (data URI o /stories/...) para multi-referencia (opcional)',
+          items: { type: 'string' }
+        }
+      },
+      required: ['prompt']
+    },
+    handler: opGenerateScene
+  },
+  {
+    name: 'get_job_status',
+    description: 'Consulta el estado de un job asíncrono (generación de escena o ficha). Devuelve status (pending|running|done|error) y, si terminó, el resultado.',
+    parameters: {
+      type: 'object',
+      properties: { jobId: { type: 'string', description: 'ID del job devuelto por generate_scene' } },
+      required: ['jobId']
+    },
+    handler: opGetJobStatus
   }
 ];
 
